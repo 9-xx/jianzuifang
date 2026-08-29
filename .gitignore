@@ -26,3 +26,6 @@ yarn-error.log*
 
 # TypeScript 增量编译缓存（本地生成，不应提交）
 *.tsbuildinfo
+
+# 设计文档（本地保留，不上传仓库）
+docs/
