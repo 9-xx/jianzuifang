@@ -84,6 +84,7 @@ export function computeFrequentIssues(
  *
  * - 已声明（lexicon/predefined）→ declared: true，不弹确认卡
  * - 已 dismissed → 不再提醒（跳过）
+ * - 已 confirmed → 用户已经确认过是自己的问题，不用再问一遍（跳过）
  * - 其余达到阈值的 → 需要确认卡片
  */
 export interface SessionTagView {
@@ -130,7 +131,8 @@ export function classifySessionTags(
     }
 
     const status = statusMap.get(tag)
-    if (status?.status === 'dismissed') continue // 已忽略，不再提醒
+    // 已忽略、或已确认过的问题都已经有过用户的决定，不用再弹确认卡
+    if (status?.status === 'dismissed' || status?.status === 'confirmed') continue
 
     const count = counts.get(tag) ?? 0
     views.push({

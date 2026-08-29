@@ -47,7 +47,10 @@ export function computeGrowthSummary(
   }
 
   const recent = sorted.slice(-N)
-  const earlier = sorted.length > N ? sorted.slice(0, -N) : []
+  // "更早的 N 次"是紧邻 recent 之前的 N 次，不是除 recent 外的全部历史——
+  // 否则 earlier 会随总场次无限增长，导致哪怕频率毫无变化也会被判定为"进步"。
+  const earlier =
+    sorted.length > N ? sorted.slice(Math.max(0, sorted.length - 2 * N), -N) : []
 
   const recentCounts = new Map<string, number>()
   for (const s of recent) {
@@ -66,15 +69,15 @@ export function computeGrowthSummary(
   const improvements: string[] = []
   const drops = [...recentCounts.entries()]
     .map(([tag, recentCount]) => {
-      const earlierAvg = earlier.length > 0 ? (earlierCounts.get(tag) ?? 0) : recentCount
-      return { tag, recentCount, earlierAvg, drop: earlierAvg - recentCount }
+      const earlierCount = earlier.length > 0 ? (earlierCounts.get(tag) ?? 0) : recentCount
+      return { tag, recentCount, earlierCount, drop: earlierCount - recentCount }
     })
     .filter((d) => d.drop > 0)
     .sort((a, b) => b.drop - a.drop)
     .slice(0, 2)
 
   for (const d of drops) {
-    const half = d.earlierAvg > 0 && d.recentCount <= d.earlierAvg / 2
+    const half = d.earlierCount > 0 && d.recentCount <= d.earlierCount / 2
     improvements.push(
       half
         ? `你的「${d.tag}」问题最近 ${recent.length} 次比之前少了一半以上，进步明显！`
@@ -82,11 +85,13 @@ export function computeGrowthSummary(
     )
   }
 
-  // ---- 新增问题提醒 ----
+  // ---- 新增问题提醒（需要有"更早"的数据才谈得上"新增"，数据不够时不判断） ----
   const newIssues: string[] = []
-  for (const [tag] of recentCounts) {
-    if ((earlierCounts.get(tag) ?? 0) === 0) {
-      newIssues.push(`最近新出现了一个问题：「${tag}」，可以留意一下。`)
+  if (earlier.length > 0) {
+    for (const [tag] of recentCounts) {
+      if ((earlierCounts.get(tag) ?? 0) === 0) {
+        newIssues.push(`最近新出现了一个问题：「${tag}」，可以留意一下。`)
+      }
     }
   }
 
