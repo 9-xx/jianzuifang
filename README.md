@@ -37,12 +37,11 @@ npm run dev            # 前端 http://localhost:5173，API 走 Vite 代理
 ├── api/                # Vercel Serverless Functions（后端，无状态）
 │   ├── feedback.ts     # POST /api/feedback 语义类反馈 + 标签
 │   └── generate-material.ts  # POST /api/generate-material 整理总结阅读材料
-├── src/
-│   ├── data/           # 静态配置：场景库、词库、语义标签字典（前后端共用）
-│   ├── lib/            # 存储层、词库匹配、记忆聚合、成长总结、AI 客户端
-│   ├── pages/          # 首页 / 场景选择 / 练习 / 反馈 / 记录 / 高频问题
-│   └── styles/         # 设计系统 CSS
-└── docs/               # 产品规格文档
+└── src/
+    ├── data/           # 静态配置：场景库、词库、语义标签字典（前后端共用）
+    ├── lib/            # 存储层、词库匹配、记忆聚合、成长总结、AI 客户端
+    ├── pages/          # 首页 / 场景选择 / 练习 / 反馈 / 记录 / 高频问题
+    └── styles/         # 设计系统 CSS
 ```
 
 ## 数据与隐私
