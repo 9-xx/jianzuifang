@@ -10,6 +10,7 @@
  *   某标签最近连续 M 次（M=5）练习的 feedbackTags 都不再包含 → 提示。
  */
 import type { PracticeSession, TagStatus, UserDeclaredIssue } from './types.js'
+import { habitFamilyOf, habitLabel } from './habits.js'
 
 const N = 5
 const M = 5
@@ -65,7 +66,7 @@ export function computeGrowthSummary(
     }
   }
 
-  // ---- 频率变化：降幅最明显的 1-2 个标签 ----
+  // ---- 频率变化：优先思维外化习惯，最多 2 条 ----
   const improvements: string[] = []
   const drops = [...recentCounts.entries()]
     .map(([tag, recentCount]) => {
@@ -74,24 +75,33 @@ export function computeGrowthSummary(
     })
     .filter((d) => d.drop > 0)
     .sort((a, b) => b.drop - a.drop)
-    .slice(0, 2)
 
+  const pickedDrops: typeof drops = []
+  const topThought = drops.find((d) => habitFamilyOf(d.tag) === 'thought')
+  if (topThought) pickedDrops.push(topThought)
   for (const d of drops) {
-    const half = d.earlierCount > 0 && d.recentCount <= d.earlierCount / 2
-    improvements.push(
-      half
-        ? `你的「${d.tag}」问题最近 ${recent.length} 次比之前少了一半以上，进步明显！`
-        : `你的「${d.tag}」问题最近 ${recent.length} 次比之前减少了 ${d.drop} 次，继续保持！`,
-    )
+    if (pickedDrops.length >= 2) break
+    if (!pickedDrops.includes(d)) pickedDrops.push(d)
   }
 
-  // ---- 新增问题提醒（需要有"更早"的数据才谈得上"新增"，数据不够时不判断） ----
+  for (const d of pickedDrops) {
+    improvements.push(improvementLine(d.tag, d.drop, d.earlierCount, d.recentCount, recent.length))
+  }
+
+  // ---- 新增习惯提醒：思维外化优先，最多 3 条 ----
   const newIssues: string[] = []
   if (earlier.length > 0) {
-    for (const [tag] of recentCounts) {
-      if ((earlierCounts.get(tag) ?? 0) === 0) {
-        newIssues.push(`最近新出现了一个问题：「${tag}」，可以留意一下。`)
-      }
+    const newcomers = [...recentCounts.keys()]
+      .filter((tag) => (earlierCounts.get(tag) ?? 0) === 0)
+      .sort((a, b) => {
+        const fa = habitFamilyOf(a) === 'thought' ? 0 : 1
+        const fb = habitFamilyOf(b) === 'thought' ? 0 : 1
+        if (fa !== fb) return fa - fb
+        return (recentCounts.get(b) ?? 0) - (recentCounts.get(a) ?? 0)
+      })
+      .slice(0, 3)
+    for (const tag of newcomers) {
+      newIssues.push(newIssueLine(tag))
     }
   }
 
@@ -110,10 +120,54 @@ export function computeGrowthSummary(
     for (const tag of confirmedTags) {
       const stillPresent = lastMSets.some((set) => set.has(tag))
       if (!stillPresent) {
-        disappeared.push(`你之前关注的问题「${tag}」最近 ${M} 次练习都没再出现了，很棒！`)
+        disappeared.push(disappearedLine(tag, M))
       }
     }
   }
 
   return { improvements, newIssues, disappeared, hasData: true }
+}
+
+function improvementLine(
+  tag: string,
+  drop: number,
+  earlierCount: number,
+  recentCount: number,
+  recentLen: number,
+): string {
+  const name = habitLabel(tag)
+  const half = earlierCount > 0 && recentCount <= earlierCount / 2
+  const family = habitFamilyOf(tag)
+  if (family === 'thought') {
+    return half
+      ? `「${name}」最近 ${recentLen} 次比之前少了一半以上，想法越来越能说完整。`
+      : `「${name}」最近 ${recentLen} 次比之前少了 ${drop} 次，继续把判断说出来。`
+  }
+  if (family === 'wording') {
+    return half
+      ? `「${name}」最近 ${recentLen} 次比之前少了一半以上，用词更干净了。`
+      : `「${name}」最近 ${recentLen} 次比之前少了 ${drop} 次，继续保持。`
+  }
+  return half
+    ? `「${name}」最近 ${recentLen} 次比之前少了一半以上，临场更稳了。`
+    : `「${name}」最近 ${recentLen} 次比之前少了 ${drop} 次，继续保持。`
+}
+
+function newIssueLine(tag: string): string {
+  const name = habitLabel(tag)
+  if (habitFamilyOf(tag) === 'thought') {
+    return `最近常出现：「${name}」。下次开口时先把那句判断说出来。`
+  }
+  if (habitFamilyOf(tag) === 'wording') {
+    return `最近常出现用词习惯：「${name}」，可以留意一下。`
+  }
+  return `最近常出现：「${name}」，可以留意一下。`
+}
+
+function disappearedLine(tag: string, m: number): string {
+  const name = habitLabel(tag)
+  if (habitFamilyOf(tag) === 'thought') {
+    return `你盯着的「${name}」最近 ${m} 次都没再出现，想法说得更完整了。`
+  }
+  return `你盯着的「${name}」最近 ${m} 次练习都没再出现了，很棒！`
 }

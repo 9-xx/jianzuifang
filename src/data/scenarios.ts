@@ -286,6 +286,60 @@ export function findScenario(id: string): Scenario | undefined {
   return ALL_SCENARIOS.find((s) => s.id === id)
 }
 
+/** 从一次练习记录反查场景：优先 id，旧记录则用名称 + 模式兜底 */
+export function findScenarioBySession(input: {
+  scenarioId?: string
+  scenario: string
+  mode: string
+  subMode?: string
+}): Scenario | undefined {
+  if (input.scenarioId) {
+    const byId = findScenario(input.scenarioId)
+    if (byId) return byId
+  }
+  return ALL_SCENARIOS.find((s) => {
+    if (s.name !== input.scenario || s.mode !== input.mode) return false
+    if (s.mode === '结构化表达') {
+      return 'subMode' in s && s.subMode === input.subMode
+    }
+    return true
+  })
+}
+
+/** 进入该场景的练习页路径 */
+export function buildPracticePath(scenario: Scenario): string {
+  const params = new URLSearchParams()
+  params.set('mode', scenario.mode)
+  if ('subMode' in scenario) params.set('subMode', scenario.subMode)
+  params.set('scenario', scenario.id)
+  return `/practice?${params.toString()}`
+}
+
+/** 「再练一次」：能还原场景就回练习页，否则退到场景选择 */
+export function retryPracticePath(input: {
+  scenarioId?: string
+  scenario: string
+  mode: string
+  subMode?: string
+  promptText?: string
+  simulate?: { savedMaterialId?: string }
+}): string {
+  if (input.mode === '材料模拟') {
+    const q = new URLSearchParams({ retry: '1' })
+    if (input.simulate?.savedMaterialId) q.set('materialId', input.simulate.savedMaterialId)
+    return `/simulate?${q.toString()}`
+  }
+  const scenario = findScenarioBySession(input)
+  if (scenario) {
+    const path = buildPracticePath(scenario)
+    if (input.mode === '即兴问答' && input.promptText) {
+      return `${path}&q=${encodeURIComponent(input.promptText)}`
+    }
+    return path
+  }
+  return `/scenarios/${encodeURIComponent(input.mode)}`
+}
+
 /**
  * 从问题池随机抽一道题，避开最近抽过的（记录在 sessionStorage，
  * 会话内有效——同一次浏览里连续练同一场景不重复）。

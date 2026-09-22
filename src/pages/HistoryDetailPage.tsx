@@ -4,6 +4,8 @@
 import { useMemo } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { loadSessions } from '../lib/storage'
+import { retryPracticePath } from '../data/scenarios'
+import { simulateRoleLabel } from '../data/simulate-scenes'
 
 function formatTime(iso: string): string {
   const d = new Date(iso)
@@ -31,6 +33,7 @@ export default function HistoryDetailPage() {
   }
 
   const isSummary = session.subMode === '整理总结'
+  const isSimulate = session.mode === '材料模拟'
   const f = session.feedback
 
   return (
@@ -53,21 +56,105 @@ export default function HistoryDetailPage() {
         </div>
       )}
 
+      {session.simulate?.transcript && session.simulate.transcript.length > 0 && (
+        <div className="card">
+          <div className="section-title mt-0">当时的对话</div>
+          <div className="sim-thread">
+            {session.simulate.transcript.map((turn, i) => (
+              <div key={`${turn.role}-${i}`} className={`sim-bubble ${turn.role}`}>
+                <div className="sim-role">
+                  {turn.role === 'ai'
+                    ? simulateRoleLabel(session.simulate?.sceneType ?? '面试')
+                    : '你'}
+                </div>
+                {turn.text}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* 你的作答 */}
-      <div className="card">
-        <div className="section-title mt-0">🗣 你的作答</div>
-        <p style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{session.userContent}</p>
-      </div>
+      {!isSimulate && (
+        <div className="card">
+          <div className="section-title mt-0">🗣 你的作答</div>
+          <p style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{session.userContent}</p>
+        </div>
+      )}
+
+      {session.followUpQuestions && session.followUpQuestions.length > 0 && (
+        <div className="card">
+          <div className="section-title mt-0">当时的追问</div>
+          <ol className="followup-list">
+            {session.followUpQuestions.map((q) => (
+              <li key={q}>{q}</li>
+            ))}
+          </ol>
+          {session.followUpAnswers ? (
+            <p style={{ whiteSpace: 'pre-wrap', margin: '12px 0 0' }}>{session.followUpAnswers}</p>
+          ) : (
+            <p className="muted mt-8" style={{ marginBottom: 0 }}>
+              这次跳过了追问。
+            </p>
+          )}
+        </div>
+      )}
 
       {/* 反馈 */}
       <div className="card">
-        <div className="section-title mt-0">反馈</div>
-        {f.fillerWords && (
+        <div className="section-title mt-0">这次有没有说出来</div>
+        {f.comparedWithLast && (
+          <div className="compare-card" style={{ marginBottom: 16 }}>
+            <div className="section-title mt-0">跟上一次比</div>
+            <p>{f.comparedWithLast}</p>
+          </div>
+        )}
+        {f.ideaCompleteness && (
           <div className="feedback-dimension">
             <h4>
-              填充词 / 口头禅 / 模糊表达 <span className="badge badge-lexicon">词库</span>
+              想法完整度 <span className="badge badge-ai">AI</span>
             </h4>
-            <p>{f.fillerWords}</p>
+            <p>{f.ideaCompleteness}</p>
+          </div>
+        )}
+        {f.opinionIndependence && (
+          <div className="feedback-dimension">
+            <h4>
+              观点是不是你的 <span className="badge badge-ai">AI</span>
+            </h4>
+            <p>{f.opinionIndependence}</p>
+          </div>
+        )}
+        {isSimulate && f.relevance && (
+          <div className="feedback-dimension">
+            <h4>
+              有没有落到这份材料 <span className="badge badge-ai">AI</span>
+            </h4>
+            <p>{f.relevance}</p>
+          </div>
+        )}
+        {isSimulate && f.highlight && (
+          <div className="feedback-dimension">
+            <h4>
+              答得好的点 <span className="badge badge-ai">AI</span>
+            </h4>
+            <p>{f.highlight}</p>
+          </div>
+        )}
+        {isSimulate && f.risk && (
+          <div className="feedback-dimension">
+            <h4>
+              最大风险 <span className="badge badge-ai">AI</span>
+            </h4>
+            <p>{f.risk}</p>
+          </div>
+        )}
+        {isSimulate && f.nextTip && (
+          <div className="feedback-dimension">
+            <h4>
+              下次开口可以先说 <span className="badge badge-ai">AI</span>
+            </h4>
+            <p>{f.nextTip}</p>
           </div>
         )}
         {f.logic && (
@@ -102,12 +189,12 @@ export default function HistoryDetailPage() {
             <p>{f.informationCompleteness}</p>
           </div>
         )}
-        {isSummary && f.opinionIndependence && (
+        {f.fillerWords && (
           <div className="feedback-dimension">
             <h4>
-              个人观点独立性 <span className="badge badge-ai">AI</span>
+              填充词 / 口头禅 / 模糊表达 <span className="badge badge-lexicon">辅助</span>
             </h4>
-            <p>{f.opinionIndependence}</p>
+            <p>{f.fillerWords}</p>
           </div>
         )}
         {f.encouragement && <p className="mt-8">💪 {f.encouragement}</p>}
@@ -116,19 +203,32 @@ export default function HistoryDetailPage() {
       {/* 问题标签 */}
       {session.feedbackTags.length > 0 && (
         <div className="card">
-          <div className="section-title mt-0">本次触发的问题标签</div>
+          <div className="section-title mt-0">本次触发的习惯</div>
           <div className="row wrap">
             {session.feedbackTags.map((t, i) => (
-              <span key={`${t.tag}-${i}`} className="tag-chip">
+              <button
+                key={`${t.tag}-${i}`}
+                className="tag-chip tag-chip-link"
+                onClick={() =>
+                  navigate('/frequent-issues?tag=' + encodeURIComponent(t.tag))
+                }
+                title="看看这个习惯的记录"
+              >
                 {t.tag}
                 <span className={`badge ${t.source === 'ai' ? 'badge-ai' : 'badge-lexicon'}`}>
                   {t.source === 'ai' ? 'AI' : '词库'}
                 </span>
-              </span>
+              </button>
             ))}
           </div>
         </div>
       )}
+
+      <div className="btn-row">
+        <button className="btn btn-primary" onClick={() => navigate(retryPracticePath(session))}>
+          再练一次
+        </button>
+      </div>
     </div>
   )
 }

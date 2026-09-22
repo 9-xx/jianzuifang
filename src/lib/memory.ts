@@ -10,6 +10,7 @@ import type {
   TagStatus,
   UserDeclaredIssue,
 } from './types.js'
+import { compareHabitTags, compareHabitTagsByCount } from './habits.js'
 
 /** 统计所有 session 中每个标签的出现次数 */
 export function countTags(sessions: PracticeSession[]): Map<string, number> {
@@ -75,7 +76,7 @@ export function computeFrequentIssues(
     })
   }
 
-  return views.sort((a, b) => b.count - a.count)
+  return views.sort(compareHabitTagsByCount)
 }
 
 /**
@@ -143,5 +144,8 @@ export function classifySessionTags(
     })
   }
 
-  return views
+  return views.sort((a, b) => {
+    if (a.needsConfirmation !== b.needsConfirmation) return a.needsConfirmation ? -1 : 1
+    return compareHabitTags(a.tag, b.tag)
+  })
 }

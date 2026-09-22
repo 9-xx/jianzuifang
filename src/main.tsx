@@ -11,13 +11,19 @@ import FeedbackPage from './pages/FeedbackPage'
 import HistoryPage from './pages/HistoryPage'
 import HistoryDetailPage from './pages/HistoryDetailPage'
 import FrequentIssuesPage from './pages/FrequentIssuesPage'
+import SimulateSetupPage from './pages/SimulateSetupPage'
+import SimulatePlayPage from './pages/SimulatePlayPage'
+import NotFoundPage from './pages/NotFoundPage'
+import { ErrorBoundary } from './pages/ErrorBoundary'
 import { isStorageAvailable } from './lib/storage'
 import './styles/global.css'
 
 function TopBar() {
   const location = useLocation()
   const isPracticeFlow =
-    location.pathname.startsWith('/practice') || location.pathname.startsWith('/feedback')
+    location.pathname.startsWith('/practice') ||
+    location.pathname.startsWith('/feedback') ||
+    location.pathname.startsWith('/simulate/play')
 
   return (
     <header className="topbar">
@@ -41,7 +47,7 @@ function TopBar() {
               to="/frequent-issues"
               className={({ isActive }) => (isActive ? 'active' : '')}
             >
-              高频问题
+              习惯
             </NavLink>
           </nav>
         )}
@@ -54,24 +60,29 @@ function App() {
   const storageOk = isStorageAvailable()
   return (
     <BrowserRouter>
-      <TopBar />
-      <main className="app-shell">
-        {!storageOk && (
-          <div className="notice notice-warn" role="alert">
-            当前浏览器环境下无法保存记录（可能是隐私模式），本次练习可以正常进行，但历史记录和"高频问题"功能将无法生效。
-          </div>
-        )}
-        <Routes>
-          <Route path="/" element={<HomePage />} />
-          <Route path="/scenarios/:mode" element={<ScenarioSelectPage />} />
-          <Route path="/scenarios/:mode/sub/:subMode" element={<ScenarioSelectPage />} />
-          <Route path="/practice" element={<PracticePage />} />
-          <Route path="/feedback/:sessionId" element={<FeedbackPage />} />
-          <Route path="/history" element={<HistoryPage />} />
-          <Route path="/history/:sessionId" element={<HistoryDetailPage />} />
-          <Route path="/frequent-issues" element={<FrequentIssuesPage />} />
-        </Routes>
-      </main>
+      <ErrorBoundary>
+        <TopBar />
+        <main className="app-shell">
+          {!storageOk && (
+            <div className="notice notice-warn" role="alert">
+              当前浏览器环境下无法保存记录（可能是隐私模式），本次练习可以正常进行，但历史记录和表达习惯功能将无法生效。
+            </div>
+          )}
+          <Routes>
+            <Route path="/" element={<HomePage />} />
+            <Route path="/scenarios/:mode" element={<ScenarioSelectPage />} />
+            <Route path="/scenarios/:mode/sub/:subMode" element={<ScenarioSelectPage />} />
+            <Route path="/practice" element={<PracticePage />} />
+            <Route path="/simulate" element={<SimulateSetupPage />} />
+            <Route path="/simulate/play" element={<SimulatePlayPage />} />
+            <Route path="/feedback/:sessionId" element={<FeedbackPage />} />
+            <Route path="/history" element={<HistoryPage />} />
+            <Route path="/history/:sessionId" element={<HistoryDetailPage />} />
+            <Route path="/frequent-issues" element={<FrequentIssuesPage />} />
+            <Route path="*" element={<NotFoundPage />} />
+          </Routes>
+        </main>
+      </ErrorBoundary>
     </BrowserRouter>
   )
 }

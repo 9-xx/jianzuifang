@@ -4,10 +4,16 @@
  */
 
 /** 练习模式（大模式层级） */
-export type PracticeMode = '即兴问答' | '结构化表达'
+export type PracticeMode = '即兴问答' | '结构化表达' | '材料模拟'
 
 /** 结构化表达的子模式 */
 export type SubMode = '自由生成' | '整理总结'
+
+/** 材料模拟的场景类型 */
+export type SimulateSceneType = '面试' | '客户沟通' | '会议演讲' | '思辨演讲'
+
+/** 材料模拟的对方人设 */
+export type SimulatePersona = '严格挑剔' | '平和追问' | '轻松聊天'
 
 /** 场景分类维度，对应目标用户画像的两个主群体 */
 export type ScenarioCategory = '职场向' | '日常表达向'
@@ -26,18 +32,30 @@ export interface FeedbackTag {
 
 /** 分维度反馈文字 */
 export interface PracticeFeedback {
+  /** 想法完整度（AI，主维度）：核心判断有没有说出口 */
+  ideaCompleteness?: string
+  /** 观点独立性（AI，主维度）：有没有亮出自己的判断 */
+  opinionIndependence?: string
   /** 逻辑性（AI） */
   logic?: string
   /** 流畅度（AI） */
   fluency?: string
-  /** 填充词/口头禅（词库匹配） */
+  /** 填充词/口头禅（词库匹配，辅助） */
   fillerWords?: string
   /** 结构完整度（AI） */
   structure?: string
   /** 仅整理总结：信息保留完整度（AI） */
   informationCompleteness?: string
-  /** 仅整理总结：个人观点独立性（AI） */
-  opinionIndependence?: string
+  /** 仅材料模拟：回答是否落到这份材料上 */
+  relevance?: string
+  /** 仅材料模拟：答得好的点 */
+  highlight?: string
+  /** 仅材料模拟：最大风险点 */
+  risk?: string
+  /** 仅材料模拟：下次开口可以怎么改 */
+  nextTip?: string
+  /** 再练一次：跟上一次比，上次没说出口的那句这次补上了没有 */
+  comparedWithLast?: string
   /** 鼓励性总结 */
   encouragement?: string
 }
@@ -50,8 +68,16 @@ export interface PracticeSession {
   subMode?: SubMode
   /** 具体场景名称；整理总结模式下为话题方向名称 */
   scenario: string
+  /** 场景配置 id，供「再练一次」回到同一题；旧记录可能没有 */
+  scenarioId?: string
+  /** 即兴问答当场抽到的题目；再练一次带上，才能对照同一题 */
+  promptText?: string
   /** 仅整理总结：AI 生成的阅读材料原文，随记录保存供回看对照 */
   aiGeneratedMaterial?: string
+  /** 仅整理总结：总结后的追问（1-2 题） */
+  followUpQuestions?: string[]
+  /** 仅整理总结：用户对追问的回答；跳过则没有 */
+  followUpAnswers?: string
   /** ISO 时间 */
   createdAt: string
   inputMethod: InputMethod
@@ -62,6 +88,29 @@ export interface PracticeSession {
   feedbackTags: FeedbackTag[]
   /** 作答用时（秒），即兴问答模式下有意义 */
   durationSeconds?: number
+  /** 仅材料模拟：当场对话与人设（材料正文默认不落库） */
+  simulate?: SimulateSessionMeta
+}
+
+export interface SimulateTurn {
+  role: 'ai' | 'user'
+  text: string
+}
+
+export interface SimulateDimension {
+  name: string
+  why: string
+  fromMaterial: string
+  questions: string[]
+}
+
+export interface SimulateSessionMeta {
+  sceneType: SimulateSceneType
+  persona: SimulatePersona
+  brief: string
+  savedMaterialId?: string
+  transcript: SimulateTurn[]
+  dimensions: Array<{ name: string; why: string }>
 }
 
 /** UserSettings —— 本地偏好设置 */
@@ -125,11 +174,17 @@ export interface LexiconHit {
 
 /** /api/feedback 的响应结构 */
 export interface AiFeedbackResponse {
+  ideaCompleteness: string
+  opinionIndependence: string
   logic: string
   fluency: string
   structure: string
   informationCompleteness?: string
-  opinionIndependence?: string
+  relevance?: string
+  highlight?: string
+  risk?: string
+  nextTip?: string
+  comparedWithLast?: string
   /** 语义类标签（已通过白名单校验） */
   tags: string[]
   encouragement: string

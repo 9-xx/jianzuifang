@@ -33,8 +33,13 @@ export default function ScenarioSelectPage() {
     setSubMode(subModeParam)
   }, [subModeParam])
 
+  useEffect(() => {
+    if (mode === '材料模拟') navigate('/simulate', { replace: true })
+  }, [mode, navigate])
+
   // 记录"最近使用"（精确到大模式层级）
   useEffect(() => {
+    if (mode === '材料模拟') return
     recordModeVisit(mode)
   }, [mode])
 
@@ -65,6 +70,8 @@ export default function ScenarioSelectPage() {
     return groups
   }, [])
 
+  if (mode === '材料模拟') return null
+
   // ---- 即兴问答 ----
   if (mode === '即兴问答') {
     return (
@@ -73,7 +80,7 @@ export default function ScenarioSelectPage() {
           ← 返回
         </button>
         <h1 className="page-title">选一个场景</h1>
-        <p className="page-subtitle">每个场景对应一个问题池，每次练习随机抽一道题。</p>
+        <p className="page-subtitle">每个场景随机抽一题。练的是被问到时把想法说出来。</p>
 
         {(['职场向', '日常表达向'] as ScenarioCategory[]).map((cat) => (
           <div key={cat}>
@@ -115,12 +122,12 @@ export default function ScenarioSelectPage() {
           <button className="mode-card mode-impromptu" onClick={() => setSubMode('自由生成')}>
             <div className="mode-icon">✍️</div>
             <h2>自由生成</h2>
-            <p>从零组织自己的想法，把零散想法说成一段有逻辑的话。</p>
+            <p>从零组织自己的想法，把还停在脑子里的话先说完整。</p>
           </button>
           <button className="mode-card mode-structured" onClick={() => setSubMode('整理总结')}>
             <div className="mode-icon">📖</div>
             <h2>整理总结</h2>
-            <p>读一段 AI 生成的材料，总结要点、给出观点。练"信息压缩 + 提炼 + 转述"。</p>
+            <p>读一段材料，用自己的话总结，并亮出你的判断。</p>
           </button>
         </div>
       </div>
@@ -139,8 +146,8 @@ export default function ScenarioSelectPage() {
       </h1>
       <p className="page-subtitle">
         {subMode === '自由生成'
-          ? '先想清楚框架再开口，说完给你结构上的反馈。'
-          : '进入练习页后会先展示一段 AI 生成的阅读材料，读完再总结。'}
+          ? '先看框架再开口。说完看你有没有把想法说完整。'
+          : '进入练习页后会先展示一段阅读材料，读完再用自己的判断说出来。'}
       </p>
 
       {(['职场向', '日常表达向'] as ScenarioCategory[]).map((cat) => (

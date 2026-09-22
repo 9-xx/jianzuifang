@@ -16,7 +16,7 @@ export interface ApiResponseWriter {
 /** 限流配置：每个 IP 在窗口期内允许的最大请求数 */
 export const RATE_LIMIT = {
   windowMs: 60_000,
-  maxRequests: 10,
+  maxRequests: 20,
 } as const
 
 /** 输入长度上限（字符），防止超长输入导致 token 成本失控 */
@@ -25,4 +25,8 @@ export const LIMITS = {
   maxMaterial: 8_000,
   maxTopicLength: 100,
   maxDeclaredIssues: 50,
+  maxFollowUpAnswer: 3_000,
+  maxBrief: 80,
+  maxSimulateUserTurns: 5,
+  maxPreviousContent: 1_200,
 } as const

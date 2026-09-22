@@ -1,17 +1,12 @@
 /**
- * 我的高频问题页：系统检测区 + 用户手动声明区。
+ * 我的表达习惯页：系统检测区 + 用户手动声明区。
  *
- * 合并规则：
- * - 精确匹配类声明（lexicon/predefined）命中系统统计 → 合并为一条，
- *   标注"你自己提到过 · 系统也发现了 N 次"，不弹"待确认"；
- * - 系统检测到但未声明的候选 → 正常展示"确认/忽略"（dismissed 可恢复关注）；
- * - freeform 兜底声明 → 独立展示，不参与合并。
- *
- * 手动添加流程：先选大类 → 词库类直接输入具体词；语义类从预定义列表选
- * （列表末尾有"以上都不是，自己描述"兜底项）。
+ * 展示按主次分组：想法没说完整（主）/ 用词习惯 / 临场状态。
+ * 合并规则与原先一致，只是不再把填充词和思维外化混在一堆里。
+ * 支持 ?tag= 高亮定位（反馈页/历史详情页的标签点击跳转过来）。
  */
-import { useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useMemo, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   loadSessions,
   loadTagStatuses,
@@ -29,19 +24,30 @@ import {
   clearAllMemory,
 } from '../lib/issues'
 import { tagsOfCategory } from '../data/semantic-tags'
-import type { DeclaredInputType, TagStatus } from '../lib/types'
+import {
+  HABIT_FAMILY_META,
+  habitFamilyOf,
+  habitFamilyOfCategory,
+  habitLabel,
+  type HabitFamily,
+} from '../lib/habits'
+import type { DeclaredInputType, FrequentIssueView, TagStatus } from '../lib/types'
 
-/** 问题大类 → 录入方式 */
 const CATEGORY_INPUT_TYPE: Record<string, DeclaredInputType> = {
+  逻辑结构: 'predefined',
+  针对性: 'predefined',
   填充词: 'lexicon',
   模糊表达: 'lexicon',
-  逻辑结构: 'predefined',
-  紧张点: 'predefined',
   开场白依赖: 'predefined',
+  紧张点: 'predefined',
   情绪失衡: 'predefined',
 }
 
-const ALL_CATEGORIES = Object.keys(CATEGORY_INPUT_TYPE)
+const CATEGORY_GROUPS: Array<{ family: HabitFamily; categories: string[] }> = [
+  { family: 'thought', categories: ['逻辑结构', '针对性'] },
+  { family: 'wording', categories: ['填充词', '模糊表达', '开场白依赖'] },
+  { family: 'presence', categories: ['紧张点', '情绪失衡'] },
+]
 
 function AddIssueDialog({ onClose }: { onClose: () => void }) {
   const [category, setCategory] = useState<string | null>(null)
@@ -75,39 +81,46 @@ function AddIssueDialog({ onClose }: { onClose: () => void }) {
   return (
     <div className="dialog-overlay" onClick={onClose}>
       <div className="dialog" onClick={(e) => e.stopPropagation()}>
-        <h3>添加你已知的问题</h3>
-        <p>告诉系统你清楚的问题，从下一次练习开始就会被特别关注。</p>
+        <h3>添加你已知的习惯</h3>
+        <p>先告诉我哪类想法总是说不完整。用词和临场状态也可以记，但那是辅助。</p>
 
         {!category && (
           <>
-            <div className="field-label">先选问题大类</div>
-            <div className="row wrap">
-              {ALL_CATEGORIES.map((c) => (
-                <button key={c} className="btn btn-secondary btn-sm" onClick={() => setCategory(c)}>
-                  {c}
-                </button>
-              ))}
-            </div>
+            {CATEGORY_GROUPS.map((group) => (
+              <div key={group.family} className="mb-16">
+                <div className="field-label">
+                  {HABIT_FAMILY_META[group.family].title}
+                  <span className="muted"> · {HABIT_FAMILY_META[group.family].hint}</span>
+                </div>
+                <div className="row wrap">
+                  {group.categories.map((c) => (
+                    <button key={c} className="btn btn-secondary btn-sm" onClick={() => setCategory(c)}>
+                      {c}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
           </>
         )}
 
         {category && inputType === 'lexicon' && (
           <>
-            <div className="field-label">输入具体的词（如"讲道理"）</div>
+            <div className="field-label">输入具体的词（如「讲道理」）</div>
             <input
               type="text"
               value={word}
               onChange={(e) => setWord(e.target.value)}
-              placeholder="你的口头禅或常说的模糊词…"
+              placeholder="你常说的填充词或模糊词…"
               autoFocus
             />
-            <p className="muted mt-8">这个词会被加入本地检测词库，之后每次练习都会被检测到。</p>
+            <p className="muted mt-8">这个词会加入本地检测，之后每次练习都会被扫到。它是辅助，不是主记忆。</p>
           </>
         )}
 
         {category && inputType === 'predefined' && !freeform && (
           <>
-            <div className="field-label">从「{category}」的预定义列表里选</div>
+            <div className="field-label">从「{HABIT_FAMILY_META[habitFamilyOfCategory(category)].title}」里选</div>
             <div className="row wrap">
               {tagsOfCategory(category).map((tag) => {
                 const label = tag.slice(category.length + 1)
@@ -132,16 +145,16 @@ function AddIssueDialog({ onClose }: { onClose: () => void }) {
 
         {category && inputType === 'predefined' && freeform && (
           <>
-            <div className="field-label">用自己的话描述这个问题</div>
+            <div className="field-label">用自己的话描述这个习惯</div>
             <textarea
               value={freeformText}
               onChange={(e) => setFreeformText(e.target.value)}
               style={{ minHeight: 90 }}
-              placeholder={`描述你在「${category}」方面的具体表现…`}
+              placeholder="比如：总把结论留在最后，说到判断就收回去…"
               autoFocus
             />
             <p className="muted mt-8">
-              注意：这条不会自动和系统检测结果合并，仅作为你自己的记录展示。
+              这条不会自动和系统检测结果合并，仅作为你自己的记录展示。
             </p>
             <button className="btn btn-ghost btn-sm" onClick={() => setFreeform(false)}>
               ← 返回预定义列表
@@ -167,10 +180,86 @@ function AddIssueDialog({ onClose }: { onClose: () => void }) {
   )
 }
 
+function HabitCard({
+  view,
+  highlight,
+  onConfirm,
+  onDismiss,
+  onRestore,
+}: {
+  view: FrequentIssueView
+  highlight: boolean
+  onConfirm: (tag: string) => void
+  onDismiss: (tag: string) => void
+  onRestore: (tag: string) => void
+}) {
+  const family = habitFamilyOf(view.tag)
+  return (
+    <div className={`card ${highlight ? 'card-highlight' : ''}`} data-tag={view.tag}>
+      <div className="row-between wrap">
+        <div>
+          <div className="row wrap">
+            <strong>{habitLabel(view.tag)}</strong>
+            <span className={`badge ${family === 'thought' ? 'badge-ai' : 'badge-neutral'}`}>
+              {HABIT_FAMILY_META[family].title}
+            </span>
+            {view.status === 'declared-merged' && (
+              <span className="badge badge-success">你自己提到过 · 系统也发现了 {view.count} 次</span>
+            )}
+            {view.status === 'confirmed' && <span className="badge badge-success">已确认</span>}
+            {view.status === 'pending' && (
+              <span className="badge badge-neutral">待确认 · 出现 {view.count} 次</span>
+            )}
+            {view.status === 'dismissed' && <span className="badge badge-neutral">已忽略</span>}
+          </div>
+          {view.declared && view.declaredValue && (
+            <div className="muted mt-8">你声明的原始描述：{view.declaredValue}</div>
+          )}
+        </div>
+        <div className="row">
+          {view.status === 'pending' && (
+            <>
+              <button className="btn btn-primary btn-sm" onClick={() => onConfirm(view.tag)}>
+                确认
+              </button>
+              <button className="btn btn-ghost btn-sm" onClick={() => onDismiss(view.tag)}>
+                忽略
+              </button>
+            </>
+          )}
+          {view.status === 'confirmed' && (
+            <button className="btn btn-ghost btn-sm" onClick={() => onDismiss(view.tag)}>
+              不用再盯了
+            </button>
+          )}
+          {view.status === 'dismissed' && (
+            <button className="btn btn-secondary btn-sm" onClick={() => onRestore(view.tag)}>
+              恢复关注
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function FrequentIssuesPage() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const highlightTag = searchParams.get('tag')
   const [showAdd, setShowAdd] = useState(false)
   const [tick, setTick] = useState(0)
+
+  // 带高亮进入时滚动到对应卡片
+  useEffect(() => {
+    if (!highlightTag) return
+    const t = window.setTimeout(() => {
+      document
+        .querySelector(`[data-tag="${CSS.escape(highlightTag)}"]`)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }, 120)
+    return () => window.clearTimeout(t)
+  }, [highlightTag])
 
   const refresh = () => setTick((t) => t + 1)
 
@@ -181,7 +270,6 @@ export default function FrequentIssuesPage() {
     const threshold = getThreshold(loadSettings())
     const views = computeFrequentIssues(sessions, statuses, declared, threshold)
     return { views, declared, statuses }
-    // tick 变化时重新读取本地存储
   }, [tick])
 
   const systemViews = data.views
@@ -192,8 +280,12 @@ export default function FrequentIssuesPage() {
   const mergedTags = new Set(systemViews.filter((v) => v.declared).map((v) => v.tag))
   const declaredNotYetDetected = declaredOnly.filter((d) => !mergedTags.has(d.tag as string))
 
-  const isEmpty =
-    systemViews.length === 0 && data.declared.length === 0
+  const byFamily = (family: HabitFamily) => ({
+    views: systemViews.filter((v) => habitFamilyOf(v.tag) === family),
+    declared: declaredNotYetDetected.filter((d) => habitFamilyOf(d.tag as string) === family),
+  })
+
+  const isEmpty = systemViews.length === 0 && data.declared.length === 0
 
   const handleConfirm = (tag: string) => {
     setTagStatus(tag, 'confirmed')
@@ -212,20 +304,27 @@ export default function FrequentIssuesPage() {
     refresh()
   }
   const handleClearAll = () => {
-    if (window.confirm('确定要清空全部高频问题记忆吗？包括确认/忽略状态和你手动声明的问题。此操作不可恢复。')) {
+    if (
+      window.confirm(
+        '确定要清空全部表达习惯记忆吗？包括确认/忽略状态和你手动声明的习惯。此操作不可恢复。',
+      )
+    ) {
       saveTagStatuses([] as TagStatus[])
       clearAllMemory()
       refresh()
     }
   }
 
+  const families: HabitFamily[] = ['thought', 'wording', 'presence']
+
   return (
     <div>
       <div className="row-between wrap">
         <div>
-          <h1 className="page-title">我的高频问题</h1>
+          <h1 className="page-title">我的表达习惯</h1>
           <p className="page-subtitle">
-            系统检测（累计 ≥ {getThreshold(loadSettings())} 次）+ 你手动声明的问题，双轨并行。
+            先记「想法有没有说完整」。用词是辅助。累计 ≥ {getThreshold(loadSettings())}{' '}
+            次会提醒你确认。
           </p>
         </div>
         <div className="row">
@@ -243,85 +342,52 @@ export default function FrequentIssuesPage() {
       {isEmpty && (
         <div className="empty-state">
           <div className="icon">🧠</div>
-          <p>暂时还没发现你的高频问题，多练几次我会告诉你；</p>
-          <p>如果你自己知道有什么口头禅，也可以直接告诉我。</p>
+          <p>暂时还没发现反复出现的习惯。多练几次我会告诉你哪类想法总是说不完整；</p>
+          <p>你自己知道的，也可以直接告诉我。</p>
           <button className="btn btn-primary mt-16" onClick={() => navigate('/')}>
             去练一次
           </button>
         </div>
       )}
 
-      {/* 系统检测区 */}
-      {systemViews.length > 0 && (
-        <>
-          <div className="section-title">系统检测到的候选</div>
-          {systemViews.map((v) => (
-            <div key={v.tag} className="card">
-              <div className="row-between wrap">
-                <div>
+      {families.map((family) => {
+        const group = byFamily(family)
+        if (group.views.length === 0 && group.declared.length === 0) return null
+        const meta = HABIT_FAMILY_META[family]
+        return (
+          <div key={family}>
+            <div className="section-title">
+              {meta.title}
+              {family !== 'thought' && <span className="muted"> · 辅助</span>}
+            </div>
+            {group.views.map((v) => (
+              <HabitCard
+                key={v.tag}
+                view={v}
+                highlight={v.tag === highlightTag}
+                onConfirm={handleConfirm}
+                onDismiss={handleDismiss}
+                onRestore={handleRestore}
+              />
+            ))}
+            {group.declared.map((d) => (
+              <div key={d.id} className="card">
+                <div className="row-between">
                   <div className="row wrap">
-                    <strong>{v.tag}</strong>
-                    {v.status === 'declared-merged' && (
-                      <span className="badge badge-success">你自己提到过 · 系统也发现了 {v.count} 次</span>
-                    )}
-                    {v.status === 'confirmed' && <span className="badge badge-success">已确认</span>}
-                    {v.status === 'pending' && <span className="badge badge-neutral">待确认 · 出现 {v.count} 次</span>}
-                    {v.status === 'dismissed' && <span className="badge badge-neutral">已忽略</span>}
+                    <strong>{habitLabel(d.tag as string)}</strong>
+                    <span className="badge badge-neutral">{meta.title}</span>
+                    <span className="badge badge-lexicon">你声明的 · 系统还没检测到</span>
                   </div>
-                  {v.declared && v.declaredValue && (
-                    <div className="muted mt-8">你声明的原始描述：{v.declaredValue}</div>
-                  )}
-                </div>
-                <div className="row">
-                  {v.status === 'pending' && (
-                    <>
-                      <button className="btn btn-primary btn-sm" onClick={() => handleConfirm(v.tag)}>
-                        确认
-                      </button>
-                      <button className="btn btn-ghost btn-sm" onClick={() => handleDismiss(v.tag)}>
-                        忽略
-                      </button>
-                    </>
-                  )}
-                  {v.status === 'confirmed' && (
-                    <button className="btn btn-ghost btn-sm" onClick={() => handleDismiss(v.tag)}>
-                      不算问题了
-                    </button>
-                  )}
-                  {v.status === 'dismissed' && (
-                    <button className="btn btn-secondary btn-sm" onClick={() => handleRestore(v.tag)}>
-                      恢复关注
-                    </button>
-                  )}
+                  <button className="btn btn-danger-ghost btn-sm" onClick={() => handleRemoveDeclared(d.id)}>
+                    删除
+                  </button>
                 </div>
               </div>
-            </div>
-          ))}
-        </>
-      )}
+            ))}
+          </div>
+        )
+      })}
 
-      {/* 已声明但系统还没检测到的问题 */}
-      {declaredNotYetDetected.length > 0 && (
-        <>
-          <div className="section-title">你声明的问题（系统还没检测到）</div>
-          {declaredNotYetDetected.map((d) => (
-            <div key={d.id} className="card">
-              <div className="row-between">
-                <div className="row wrap">
-                  <strong>{d.tag ?? d.value}</strong>
-                  <span className="badge badge-neutral">{d.category}</span>
-                  <span className="badge badge-lexicon">你声明的</span>
-                </div>
-                <button className="btn btn-danger-ghost btn-sm" onClick={() => handleRemoveDeclared(d.id)}>
-                  删除
-                </button>
-              </div>
-            </div>
-          ))}
-        </>
-      )}
-
-      {/* 自由描述兜底声明（独立展示，不参与合并） */}
       {freeformIssues.length > 0 && (
         <>
           <div className="section-title">你自己的记录（自由描述）</div>
@@ -330,7 +396,9 @@ export default function FrequentIssuesPage() {
               <div className="row-between">
                 <div>
                   <div className="row wrap">
-                    <span className="badge badge-neutral">{d.category}</span>
+                    <span className="badge badge-neutral">
+                      {HABIT_FAMILY_META[habitFamilyOfCategory(d.category)].title}
+                    </span>
                     <span className="muted">仅作为你自己的记录展示，不参与系统合并</span>
                   </div>
                   <p style={{ margin: '8px 0 0' }}>{d.value}</p>
@@ -344,7 +412,14 @@ export default function FrequentIssuesPage() {
         </>
       )}
 
-      {showAdd && <AddIssueDialog onClose={() => { setShowAdd(false); refresh() }} />}
+      {showAdd && (
+        <AddIssueDialog
+          onClose={() => {
+            setShowAdd(false)
+            refresh()
+          }}
+        />
+      )}
     </div>
   )
 }

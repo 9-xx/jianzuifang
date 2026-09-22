@@ -24,18 +24,19 @@ await handleFeedback(makeReq('/api/feedback', { userContent: 'x', scenario: 's',
 console.log('--- 未配置 Key ---')
 await handleFeedback(makeReq('/api/feedback', { userContent: '测试内容', scenario: '测试场景', mode: '即兴问答' }), makeRes())
 
-// 4. 限流测试（连续打满 10 次）
+// 4. 限流测试（RATE_LIMIT = 20 次/分钟，连续打满 22 次）
 console.log('--- 限流 ---')
 process.env.DEEPSEEK_API_KEY = 'test-key-for-rate-limit'
 const headers = { 'x-forwarded-for': '1.2.3.4' }
+const payload = JSON.stringify({ userContent: 'x', scenario: 's', mode: '即兴问答' })
 let last = 0
-for (let i = 0; i < 12; i++) {
+for (let i = 0; i < 22; i++) {
   const statuses: number[] = []
   const res: ApiResponseWriter = { json: (s) => { statuses.push(s) } }
-  await handleFeedback({ method: 'POST', path: '/api/feedback', body: JSON.stringify({ userContent: 'x', scenario: 's', mode: '即兴问答' }), headers }, res)
+  await handleFeedback({ method: 'POST', path: '/api/feedback', body: payload, headers }, res)
   last = statuses[0] ?? 0
 }
-console.log(`  连续 12 次请求，最后一次状态码: ${last}（期望 429）`)
+console.log(`  连续 22 次请求，最后一次状态码: ${last}（期望 429）`)
 
 // 5. generate-material 缺话题
 console.log('--- 材料接口缺话题 ---')

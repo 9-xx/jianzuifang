@@ -1,10 +1,9 @@
 /**
  * 练习页：
- * - 语音 / 打字平级可选（segmented 切换），加载时默认选中 preferredInputMethod
- * - 浏览器不支持语音识别 → 自动降级为打字并简短说明（不阻断）
- * - 即兴问答：显示抽到的题目 + 倒计时，超时自动提交（空内容也给鼓励式反馈）
- * - 整理总结：先展示 AI 生成的阅读材料（失败可重新生成），读完点"开始总结"
- * - 切换输入方式时自动更新 preferredInputMethod（隐式记忆）
+ * - 开口前有一句短引导（计时从点「开始开口」才算）
+ * - 语音 / 打字平级可选；不支持语音则降级为打字
+ * - 即兴问答：抽题 + 倒计时，超时自动提交
+ * - 整理总结：读材料 → 引导 → 总结 → 追问 1-2 个细节 → 进反馈
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
@@ -12,11 +11,30 @@ import { findScenario, pickQuestion, type ImpromptuScenario } from '../data/scen
 import { loadSettings, StorageUnavailableError } from '../lib/storage'
 import { updatePreferredInputMethod } from '../lib/settings'
 import { checkSpeechSupport, SpeechDictation } from '../lib/speech'
-import { requestMaterial } from '../lib/api-client'
+import { ApiClientError, requestFollowUp, requestMaterial } from '../lib/api-client'
 import { buildSessionDraft } from '../lib/practice-flow'
-import type { InputMethod } from '../lib/types'
+import type { InputMethod, PracticeMode, SubMode } from '../lib/types'
 
-type Phase = 'reading' | 'answering'
+type Phase = 'reading' | 'warmup' | 'answering' | 'followup'
+
+function warmupCopy(mode: string, subMode?: string): { title: string; body: string } {
+  if (mode === '即兴问答') {
+    return {
+      title: '先把那句话说出来',
+      body: '被问到时，先说判断，再补理由。不要求完整，更不要等想完美。计时从你点开始才算。',
+    }
+  }
+  if (subMode === '自由生成') {
+    return {
+      title: '先说结论',
+      body: '框架已经给你了。开口时先把结论说完；卡住了停半秒，别用「然后」填。说出来比说完美重要。',
+    }
+  }
+  return {
+    title: '用自己的话说',
+    body: '接下来用你的话讲：你记住了什么，你怎么看。说完我会追问一两个细节，看看是不是真理解了。',
+  }
+}
 
 export default function PracticePage() {
   const navigate = useNavigate()
@@ -25,10 +43,10 @@ export default function PracticePage() {
   const mode = searchParams.get('mode') ?? '即兴问答'
   const subMode = searchParams.get('subMode') ?? undefined
   const scenarioId = searchParams.get('scenario') ?? ''
+  const pinnedQuestion = searchParams.get('q') ?? ''
 
   const scenario = useMemo(() => findScenario(scenarioId), [scenarioId])
 
-  // ---- 输入方式：默认选中用户上次的偏好；不支持语音则降级 ----
   const speechSupport = useMemo(() => checkSpeechSupport(), [])
   const [inputMethod, setInputMethod] = useState<InputMethod>(() => {
     const preferred = loadSettings().preferredInputMethod
@@ -46,7 +64,6 @@ export default function PracticePage() {
     }
     setInputMethod(method)
     setSpeechNotice(null)
-    // 隐式记忆：切换后自动更新偏好，供下次默认使用
     try {
       updatePreferredInputMethod(method)
     } catch {
@@ -54,13 +71,17 @@ export default function PracticePage() {
     }
   }, [])
 
-  // ---- 即兴问答：抽题 + 计时 ----
   const [question, setQuestion] = useState('')
   useEffect(() => {
     if (mode === '即兴问答' && scenario && 'questions' in scenario) {
-      setQuestion(pickQuestion(scenario as ImpromptuScenario))
+      const pool = scenario as ImpromptuScenario
+      if (pinnedQuestion && pool.questions.includes(pinnedQuestion)) {
+        setQuestion(pinnedQuestion)
+        return
+      }
+      setQuestion(pickQuestion(pool))
     }
-  }, [mode, scenario])
+  }, [mode, scenario, pinnedQuestion])
 
   const timeLimit =
     mode === '即兴问答' && scenario && 'timeLimitSeconds' in scenario
@@ -68,11 +89,10 @@ export default function PracticePage() {
       : undefined
   const [secondsLeft, setSecondsLeft] = useState<number | undefined>(timeLimit)
 
-  // ---- 整理总结：材料生成 ----
   const [material, setMaterial] = useState<string | null>(null)
   const [materialLoading, setMaterialLoading] = useState(false)
   const [materialError, setMaterialError] = useState<string | null>(null)
-  const [phase, setPhase] = useState<Phase>(subMode === '整理总结' ? 'reading' : 'answering')
+  const [phase, setPhase] = useState<Phase>(subMode === '整理总结' ? 'reading' : 'warmup')
 
   const generateMaterial = useCallback(async () => {
     if (!scenario || !('topic' in scenario)) return
@@ -94,13 +114,19 @@ export default function PracticePage() {
     }
   }, [subMode, phase, material, materialLoading, materialError, generateMaterial])
 
-  // ---- 作答内容 ----
   const [text, setText] = useState('')
   const textRef = useRef('')
   textRef.current = text
   const [listening, setListening] = useState(false)
   const [micError, setMicError] = useState<string | null>(null)
   const dictationRef = useRef<SpeechDictation | null>(null)
+
+  const summaryRef = useRef('')
+  const followUpQuestionsRef = useRef<string[]>([])
+  const skippedFollowUpRef = useRef(false)
+  const [followUpQuestions, setFollowUpQuestions] = useState<string[]>([])
+  const [followUpLoading, setFollowUpLoading] = useState(false)
+  const [followUpError, setFollowUpError] = useState<string | null>(null)
 
   const stopDictation = useCallback(() => {
     dictationRef.current?.abort()
@@ -122,7 +148,6 @@ export default function PracticePage() {
       onText: (t) => setText(t),
       onError: (msg) => {
         setMicError(msg)
-        // 麦克风权限被拒绝等场景：自动提供"改用打字输入"的选项（提示里已含指引）
       },
       onEnd: () => setListening(false),
     })
@@ -135,22 +160,19 @@ export default function PracticePage() {
     }
   }, [listening])
 
-  // ---- 提交 ----
   const submittedRef = useRef(false)
 
-  const submit = useCallback(
-    (autoSubmitted: boolean) => {
+  const goToFeedback = useCallback(
+    (opts: { userContent: string; followUpAnswers?: string; autoSubmitted?: boolean }) => {
       if (submittedRef.current) return
       submittedRef.current = true
-
       stopDictation()
-      const content = textRef.current.trim()
 
-      // 空内容：即兴问答超时自动提交时给鼓励式反馈，不报错
+      const content = opts.userContent.trim()
       if (!content) {
         navigate('/feedback/empty', {
           state: {
-            autoSubmitted,
+            autoSubmitted: opts.autoSubmitted,
             mode,
             scenario: scenario?.name ?? '',
             subMode,
@@ -161,34 +183,127 @@ export default function PracticePage() {
 
       const durationSeconds =
         timeLimit != null ? Math.min(timeLimit, timeLimit - (secondsLeft ?? 0)) : undefined
+      const questions = followUpQuestionsRef.current
 
       try {
         const { draft } = buildSessionDraft({
-          mode: mode as '即兴问答' | '结构化表达',
-          ...(subMode ? { subMode: subMode as '自由生成' | '整理总结' } : {}),
+          mode: mode as PracticeMode,
+          ...(subMode ? { subMode: subMode as SubMode } : {}),
           scenario: scenario?.name ?? '',
+          ...(scenario?.id ? { scenarioId: scenario.id } : {}),
+          ...(mode === '即兴问答' && question ? { promptText: question } : {}),
           ...(material ? { material } : {}),
           userContent: content,
+          ...(questions.length > 0 ? { followUpQuestions: questions } : {}),
+          ...(opts.followUpAnswers ? { followUpAnswers: opts.followUpAnswers } : {}),
           inputMethod,
           ...(durationSeconds != null && durationSeconds > 0 ? { durationSeconds } : {}),
         })
-        // 把草稿与提交参数带到反馈页（反馈页负责调 AI、合并、落库）
         navigate(`/feedback/${draft.id}`, {
-          state: { draft, params: { ...{ mode, subMode, scenario: scenario?.name ?? '', material, userContent: content, inputMethod, durationSeconds } } },
+          state: {
+            draft,
+            params: {
+              mode,
+              subMode,
+              scenario: scenario?.name ?? '',
+              scenarioId: scenario?.id,
+              promptText: mode === '即兴问答' ? question : undefined,
+              material,
+              userContent: content,
+              followUpQuestions: questions.length > 0 ? questions : undefined,
+              followUpAnswers: opts.followUpAnswers,
+              inputMethod,
+              durationSeconds,
+            },
+          },
         })
       } catch (err) {
         if (err instanceof StorageUnavailableError) {
-          // 存储不可用：本次练习照常进行，只是不落库
           navigate('/feedback/unavailable', {
-            state: { storageError: true, mode, scenario: scenario?.name ?? '', subMode, userContent: content, inputMethod },
+            state: {
+              storageError: true,
+              mode,
+              scenario: scenario?.name ?? '',
+              subMode,
+              userContent: content,
+              inputMethod,
+            },
           })
         }
       }
     },
-    [navigate, mode, subMode, scenario, material, inputMethod, timeLimit, secondsLeft, stopDictation],
+    [navigate, mode, subMode, scenario, material, inputMethod, timeLimit, secondsLeft, stopDictation, question],
   )
 
-  // 倒计时：超时自动提交
+  const beginFollowUp = useCallback(
+    async (summary: string) => {
+      summaryRef.current = summary
+      skippedFollowUpRef.current = false
+      setText('')
+      textRef.current = ''
+      setFollowUpQuestions([])
+      followUpQuestionsRef.current = []
+      setFollowUpError(null)
+      setFollowUpLoading(true)
+      setPhase('followup')
+      stopDictation()
+
+      const topic = scenario && 'topic' in scenario ? scenario.topic : (scenario?.name ?? '')
+      try {
+        const res = await requestFollowUp({
+          material: material ?? '',
+          userContent: summary,
+          ...(topic ? { topic } : {}),
+        })
+        if (skippedFollowUpRef.current) return
+        const questions = res.questions.slice(0, 2)
+        if (questions.length === 0) {
+          goToFeedback({ userContent: summary })
+          return
+        }
+        followUpQuestionsRef.current = questions
+        setFollowUpQuestions(questions)
+      } catch (err) {
+        if (skippedFollowUpRef.current) return
+        setFollowUpError(
+          err instanceof ApiClientError ? err.message : '追问生成失败，可以跳过或重试',
+        )
+      } finally {
+        if (!skippedFollowUpRef.current) setFollowUpLoading(false)
+      }
+    },
+    [goToFeedback, material, scenario, stopDictation],
+  )
+
+  const skipFollowUp = useCallback(() => {
+    skippedFollowUpRef.current = true
+    goToFeedback({ userContent: summaryRef.current })
+  }, [goToFeedback])
+
+  const submit = useCallback(
+    (autoSubmitted: boolean) => {
+      stopDictation()
+      const content = textRef.current.trim()
+
+      if (phase === 'answering' && subMode === '整理总结' && !autoSubmitted) {
+        if (!content) return
+        void beginFollowUp(content)
+        return
+      }
+
+      if (phase === 'followup') {
+        goToFeedback({
+          userContent: summaryRef.current,
+          ...(content ? { followUpAnswers: content } : {}),
+        })
+        return
+      }
+
+      goToFeedback({ userContent: content, autoSubmitted })
+    },
+    [phase, subMode, beginFollowUp, goToFeedback, stopDictation],
+  )
+
   useEffect(() => {
     if (phase !== 'answering' || timeLimit == null) return
     if (secondsLeft == null) return
@@ -200,7 +315,6 @@ export default function PracticePage() {
     return () => clearTimeout(timer)
   }, [phase, secondsLeft, timeLimit, submit])
 
-  // 卸载时停止录音
   useEffect(() => () => stopDictation(), [stopDictation])
 
   if (!scenario) {
@@ -224,23 +338,32 @@ export default function PracticePage() {
           ? 'timer warning'
           : 'timer'
 
+  const warmup = warmupCopy(mode, subMode)
+  const showComposer = phase === 'answering' || (phase === 'followup' && !followUpLoading)
+  const composerPlaceholder =
+    phase === 'followup'
+      ? inputMethod === '语音'
+        ? '用自己的话回答追问，识别文字会出现在这里'
+        : '用自己的话回答上面的追问…'
+      : inputMethod === '语音'
+        ? '识别的文字会显示在这里，也可以直接补充修改'
+        : '在这里把想法说出来…'
+
   return (
     <div>
       <button className="back-link" onClick={() => navigate(-1)}>
         ← 换个场景
       </button>
 
-      {/* 场景说明 + 引导语 */}
       <h1 className="page-title">{scenario.name}</h1>
       <p className="page-subtitle">{scenario.description}</p>
 
-      {/* 整理总结：阅读材料区块 */}
       {subMode === '整理总结' && (
         <div className="card mb-16">
           <div className="row-between mb-8">
             <strong>📖 阅读材料</strong>
-            {material && (
-              <span className="muted">约 {material.length} 字 · 读完后点下方按钮开始总结</span>
+            {material && phase === 'reading' && (
+              <span className="muted">约 {material.length} 字 · 读完后点下方按钮</span>
             )}
           </div>
           {materialLoading && (
@@ -260,25 +383,96 @@ export default function PracticePage() {
           {material && <div className="material-block">{material}</div>}
           {material && phase === 'reading' && (
             <div className="btn-row">
-              <button className="btn btn-primary btn-lg" onClick={() => setPhase('answering')}>
-                阅读完成，开始总结 →
+              <button className="btn btn-primary btn-lg" onClick={() => setPhase('warmup')}>
+                阅读完成，下一步 →
               </button>
             </div>
           )}
         </div>
       )}
 
-      {/* 即兴问答：抽到的题目 */}
       {mode === '即兴问答' && question && (
         <div className="card mb-16">
           <div className="muted mb-8">本次题目（随机抽取）</div>
           <div style={{ fontSize: 17, fontWeight: 700 }}>{question}</div>
+          {phase === 'answering' && (
+            <p className="muted mt-8" style={{ marginBottom: 0 }}>
+              先把结论说出来，再补一两个理由。宁可短，也别让想法停在脑子里。
+            </p>
+          )}
         </div>
       )}
 
-      {phase === 'answering' && (
+      {(phase === 'warmup' || phase === 'answering') &&
+        'frameworkHint' in scenario &&
+        scenario.frameworkHint && (
+          <div className="framework-hint mb-16">
+            <strong>先用这个结构开口</strong>
+            <p>{scenario.frameworkHint}</p>
+          </div>
+        )}
+
+      {phase === 'warmup' && (
+        <div className="warmup-card mb-16">
+          <strong>{warmup.title}</strong>
+          <p>{warmup.body}</p>
+          <div className="btn-row" style={{ marginTop: 16 }}>
+            <button className="btn btn-primary btn-lg" onClick={() => setPhase('answering')}>
+              开始开口
+            </button>
+          </div>
+        </div>
+      )}
+
+      {phase === 'followup' && summaryRef.current && (
+        <div className="card mb-16">
+          <div className="section-title mt-0">你刚才的总结</div>
+          <p style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{summaryRef.current}</p>
+        </div>
+      )}
+
+      {phase === 'followup' && (
+        <div className="card mb-16">
+          <div className="section-title mt-0">追问一下</div>
+          {followUpLoading && (
+            <div className="loading">
+              <span className="spinner" />
+              正在出一两个细节问题，预计 5-10 秒<span className="loading-dots" />
+            </div>
+          )}
+          {followUpError && (
+            <div className="notice notice-error" role="alert">
+              {followUpError}
+              <div className="mt-8 row wrap">
+                <button
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => void beginFollowUp(summaryRef.current)}
+                >
+                  重新生成
+                </button>
+                <button className="btn btn-ghost btn-sm" onClick={skipFollowUp}>
+                  跳过，直接看反馈
+                </button>
+              </div>
+            </div>
+          )}
+          {followUpQuestions.length > 0 && (
+            <ol className="followup-list">
+              {followUpQuestions.map((q) => (
+                <li key={q}>{q}</li>
+              ))}
+            </ol>
+          )}
+          {followUpLoading && (
+            <button className="btn btn-ghost btn-sm mt-16" onClick={skipFollowUp}>
+              跳过，直接看反馈
+            </button>
+          )}
+        </div>
+      )}
+
+      {showComposer && (
         <div className="card">
-          {/* 输入方式切换：语音 / 打字平级可选 */}
           <div className="row-between wrap mb-8">
             <div className="segmented" role="tablist" aria-label="输入方式">
               <button
@@ -295,8 +489,7 @@ export default function PracticePage() {
               </button>
             </div>
 
-            {/* 计时器（即兴问答） */}
-            {timeLimit != null && (
+            {phase === 'answering' && timeLimit != null && (
               <div className="row">
                 <span className={timerClass}>
                   {Math.floor((secondsLeft ?? 0) / 60)}:
@@ -334,21 +527,46 @@ export default function PracticePage() {
             </div>
           ) : null}
 
-          {/* 文本区：两种方式共用（语音实时显示识别文字，可手动修改） */}
           <textarea
             value={text}
             onChange={(e) => setText(e.target.value)}
-            placeholder={
-              inputMethod === '语音'
-                ? '识别的文字会显示在这里，也可以直接补充修改'
-                : '在这里输入你的回答…'
-            }
+            onKeyDown={(e) => {
+              if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && text.trim()) {
+                e.preventDefault()
+                submit(false)
+              }
+            }}
+            placeholder={composerPlaceholder}
           />
 
           <div className="btn-row">
-            <button className="btn btn-primary btn-lg" onClick={() => submit(false)} disabled={!text.trim()}>
-              完成{timeLimit != null ? `（剩 ${secondsLeft ?? 0} 秒）` : ''}
-            </button>
+            {phase === 'followup' ? (
+              <>
+                <button
+                  className="btn btn-primary btn-lg"
+                  onClick={() => submit(false)}
+                  disabled={!text.trim()}
+                >
+                  答完了，看反馈
+                </button>
+                <button className="btn btn-ghost" onClick={skipFollowUp}>
+                  跳过追问
+                </button>
+                <span className="kbd-hint">⌘/Ctrl + Enter 提交</span>
+              </>
+            ) : (
+              <>
+                <button
+                  className="btn btn-primary btn-lg"
+                  onClick={() => submit(false)}
+                  disabled={!text.trim()}
+                >
+                  {subMode === '整理总结' ? '总结完了，下一问' : '完成'}
+                  {timeLimit != null ? `（剩 ${secondsLeft ?? 0} 秒）` : ''}
+                </button>
+                {timeLimit == null && <span className="kbd-hint">⌘/Ctrl + Enter 提交</span>}
+              </>
+            )}
           </div>
         </div>
       )}

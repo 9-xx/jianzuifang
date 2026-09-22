@@ -275,6 +275,14 @@ body {
   border-color: var(--accent);
 }
 
+.mode-card.mode-simulate {
+  grid-column: 1 / -1;
+}
+
+.mode-card.mode-simulate:hover {
+  border-color: var(--primary);
+}
+
 /* ---------- 徽章 / 标签 ---------- */
 
 .badge {
@@ -660,6 +668,198 @@ textarea {
   color: var(--danger);
 }
 
+/* ---------- 开口框架提示 ---------- */
+
+.framework-hint {
+  background: var(--accent-soft);
+  border-radius: var(--radius);
+  padding: 14px 18px;
+  color: #1d6f66;
+}
+
+.framework-hint strong {
+  display: block;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+}
+
+.framework-hint p {
+  margin: 8px 0 0;
+  font-size: 14.5px;
+  line-height: 1.7;
+  color: var(--text);
+}
+
+.warmup-card {
+  background: var(--bg-card);
+  border: 2px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 22px 22px 18px;
+}
+
+.warmup-card strong {
+  display: block;
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.warmup-card p {
+  margin: 10px 0 0;
+  color: var(--text-secondary);
+  font-size: 15px;
+  line-height: 1.7;
+}
+
+.followup-list {
+  margin: 0;
+  padding-left: 1.25em;
+}
+
+.followup-list li {
+  margin: 8px 0;
+  font-size: 16px;
+  font-weight: 650;
+  line-height: 1.55;
+}
+
+.choice-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.choice-grid.persona-grid {
+  grid-template-columns: 1fr 1fr 1fr;
+}
+
+@media (max-width: 640px) {
+  .choice-grid,
+  .choice-grid.persona-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.choice-card {
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  background: var(--bg-card);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
+
+.choice-card strong {
+  display: block;
+}
+
+.choice-card .hint {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  margin-top: 4px;
+}
+
+.choice-card.active {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+
+.check-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13.5px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.saved-material {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+}
+
+.saved-material:first-of-type {
+  border-top: none;
+  padding-top: 0;
+}
+
+.in-character-bar {
+  background: var(--warning-soft);
+  color: #8a6414;
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  font-size: 13.5px;
+  font-weight: 650;
+}
+
+.dim-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.dim-chip {
+  background: var(--accent-soft);
+  color: #1d6f66;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.sim-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sim-bubble {
+  max-width: 92%;
+  padding: 12px 16px;
+  border-radius: 16px;
+  white-space: pre-wrap;
+  line-height: 1.65;
+}
+
+.sim-bubble.ai {
+  align-self: flex-start;
+  background: var(--bg-soft);
+}
+
+.sim-bubble.user {
+  align-self: flex-end;
+  background: var(--accent-soft);
+}
+
+.sim-thread ~ .card textarea {
+  min-height: 96px;
+}
+
+.sim-thread ~ .card textarea.sim-speech {
+  min-height: 180px;
+}
+
+.compare-card {
+  background: var(--accent-soft);
+  border-radius: var(--radius);
+  padding: 18px 20px;
+}
+
+.compare-card .section-title {
+  color: #1d6f66;
+}
+
+.compare-card p {
+  margin: 8px 0 0;
+  color: var(--text);
+  line-height: 1.7;
+}
+
 /* ---------- 加载 ---------- */
 
 .loading {
@@ -717,10 +917,12 @@ textarea {
   background: rgba(250, 247, 242, 0.95);
   backdrop-filter: blur(8px);
   border-top: 1px solid var(--border);
-  padding: 12px 20px;
+  /* iPhone 等全面屏底部安全区，避免按钮贴到 Home 条 */
+  padding: 12px 20px calc(12px + env(safe-area-inset-bottom, 0px));
   display: flex;
   justify-content: center;
   gap: 10px;
+  flex-wrap: wrap;
   z-index: 15;
 }
 
@@ -757,6 +959,94 @@ textarea {
   font-size: 14px;
   color: var(--text-secondary);
   margin: 6px 0;
+}
+
+/* ---------- 首页统计条 ---------- */
+
+.stats-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px 12px;
+  box-shadow: var(--shadow);
+  margin-bottom: 24px;
+}
+
+.stat-cell {
+  text-align: center;
+  min-width: 88px;
+}
+
+.stat-num {
+  font-size: 26px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  line-height: 1.2;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.stat-flame {
+  font-size: 18px;
+}
+
+.stat-label {
+  font-size: 12.5px;
+  color: var(--text-faint);
+  margin-top: 2px;
+}
+
+.stat-divider {
+  width: 1px;
+  height: 34px;
+  background: var(--border);
+}
+
+/* ---------- 历史页筛选 ---------- */
+
+.filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.filter-chip {
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  border-radius: 999px;
+  padding: 6px 16px;
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.filter-chip:hover {
+  border-color: var(--primary);
+  color: var(--primary-strong);
+}
+
+.filter-chip.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+/* ---------- 快捷键提示 ---------- */
+
+.kbd-hint {
+  font-size: 12.5px;
+  color: var(--text-faint);
+  white-space: nowrap;
+  align-self: center;
 }
 
 /* ---------- 工具类 ---------- */
@@ -799,6 +1089,41 @@ textarea {
   padding: 3px 12px;
   font-size: 13px;
   color: var(--text-secondary);
+}
+
+/* 可点击的标签（反馈页/历史详情 → 习惯页联动） */
+.tag-chip-link {
+  border: 1px solid transparent;
+  font: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, transform 0.1s;
+}
+
+.tag-chip-link:hover {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  color: var(--primary-strong);
+}
+
+.tag-chip-link:active {
+  transform: scale(0.97);
+}
+
+/* 习惯页：从标签跳转过来时的高亮定位卡片 */
+.card-highlight {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(232, 102, 60, 0.18), var(--shadow);
+  animation: highlight-fade 1.8s ease-out forwards;
+}
+
+@keyframes highlight-fade {
+  0%,
+  40% {
+    background: var(--primary-soft);
+  }
+  100% {
+    background: var(--bg-card);
+  }
 }
 
 .back-link {
