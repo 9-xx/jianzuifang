@@ -10,40 +10,51 @@ import type {
   SimulateTurn,
   UserDeclaredIssue,
 } from './types.js'
+import { loadUserApiKey } from './user-key.js'
 
 export class ApiClientError extends Error {
   /** 是否可重试（网络/服务端错误可重试，参数错误不可） */
   retryable: boolean
-  constructor(message: string, retryable: boolean) {
+  /** 服务端要求配置 Key（BYOK：引导用户去填自己的 Key） */
+  keyRequired: boolean
+  constructor(message: string, retryable: boolean, keyRequired = false) {
     super(message)
     this.name = 'ApiClientError'
     this.retryable = retryable
+    this.keyRequired = keyRequired
   }
 }
 
 async function postJson<T>(path: string, body: unknown): Promise<T> {
+  // BYOK：访客自己的 Key 随请求头带给后端，仅当次使用
+  const userKey = loadUserApiKey()
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (userKey) headers['X-User-Key'] = userKey
+
   let res: Response
   try {
     res = await fetch(path, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify(body),
     })
   } catch {
     throw new ApiClientError('网络异常，请检查连接后重试', true)
   }
 
-  let data: { error?: string } & Record<string, unknown>
+  let data: { error?: string; keyRequired?: boolean } & Record<string, unknown>
   try {
-    data = (await res.json()) as { error?: string } & Record<string, unknown>
+    data = (await res.json()) as { error?: string; keyRequired?: boolean } & Record<string, unknown>
   } catch {
     throw new ApiClientError('服务返回异常，请重试', true)
   }
 
   if (!res.ok) {
+    const keyRequired = data.keyRequired === true
     throw new ApiClientError(
       data.error ?? `请求失败（${res.status}）`,
-      res.status >= 500 || res.status === 429,
+      keyRequired || res.status >= 500 || res.status === 429,
+      keyRequired,
     )
   }
   return data as T

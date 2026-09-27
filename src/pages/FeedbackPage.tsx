@@ -20,6 +20,8 @@ import { setTagStatus } from '../lib/issues'
 import { classifySessionTags } from '../lib/memory'
 import { getThreshold } from '../lib/settings'
 import { ApiClientError } from '../lib/api-client'
+import { useKeyDialog } from '../main'
+import { hasUserApiKey } from '../lib/user-key'
 import type {
   AiFeedbackResponse,
   InputMethod,
@@ -138,6 +140,8 @@ function FeedbackContent({
     return !(existing?.feedback.ideaCompleteness || existing?.feedback.relevance)
   })
   const [aiError, setAiError] = useState<string | null>(null)
+  const [keyNeeded, setKeyNeeded] = useState(false)
+  const openKeyDialog = useKeyDialog()
   const [savedSession, setSavedSession] = useState<PracticeSession | null>(
     // 已在存储里（刷新恢复）则直接用
     state.draft ? null : (draft ?? null),
@@ -167,15 +171,21 @@ function FeedbackContent({
     if (!submitParams) return
     setAiLoading(true)
     setAiError(null)
+    setKeyNeeded(false)
     try {
       const result = await fetchAiFeedback(submitParams)
       setAi(result)
     } catch (err) {
-      setAiError(
-        err instanceof ApiClientError
-          ? err.message
-          : '生成反馈失败，点击重试',
-      )
+      if (err instanceof ApiClientError && err.keyRequired) {
+        setKeyNeeded(true)
+        setAiError(hasUserApiKey() ? err.message : null)
+      } else {
+        setAiError(
+          err instanceof ApiClientError
+            ? err.message
+            : '生成反馈失败，点击重试',
+        )
+      }
     } finally {
       setAiLoading(false)
     }
@@ -341,6 +351,19 @@ function FeedbackContent({
           <div className="loading">
             <span className="spinner" />
             正在看你有没有把想法说完整，预计 5-10 秒<span className="loading-dots" />
+          </div>
+        )}
+
+        {keyNeeded && (
+          <div className="key-notice" role="alert">
+            <p>
+              {hasUserApiKey()
+                ? '你填写的 API Key 格式不对，请检查后重试。'
+                : '还没有配置 AI 的 Key。填入你自己的 DeepSeek Key 即可立刻获得反馈（只存本机，本站不会保存）。'}
+            </p>
+            <button className="btn btn-primary btn-sm" onClick={() => openKeyDialog()}>
+              {hasUserApiKey() ? '检查我的 Key' : '去填 Key'}
+            </button>
           </div>
         )}
 

@@ -2,14 +2,21 @@
  * DeepSeek API 客户端（OpenAI 兼容 chat/completions 接口）。
  *
  * 安全约定：
- * - API Key 只从服务端环境变量读取，绝不写进代码、绝不返回给前端。
- * - 请求处理完即丢弃，不做任何持久化。
+ * - API Key 只在服务端使用，绝不写进代码、绝不返回给前端、不做任何持久化。
+ * - Key 来源优先级：访客自带的 Key（BYOK，随请求头传入，仅当次使用）>
+ *   服务端环境变量 DEEPSEEK_API_KEY。两者都没有时报 LlmConfigError。
  */
 import process from 'node:process'
 
 const DEFAULT_BASE_URL = 'https://api.deepseek.com'
 const DEFAULT_MODEL = 'deepseek-chat'
 const TIMEOUT_MS = 50_000
+
+/** 访客自带 Key 的请求头名 */
+export const USER_KEY_HEADER = 'x-user-key'
+
+/** DeepSeek Key 的基本格式（用于快速拦截明显无效的输入） */
+const KEY_PATTERN = /^sk-[A-Za-z0-9]{16,}$/
 
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant'
@@ -22,10 +29,21 @@ export function getApiKey(): string | null {
   return key.trim()
 }
 
+/** 提取请求头里访客自带的 Key（格式不对/缺失返回 null，调用方回退环境变量） */
+export function extractUserKey(headers: Record<string, string | undefined>): string | null {
+  const raw = headers[USER_KEY_HEADER] ?? headers[USER_KEY_HEADER.toLowerCase()]
+  if (typeof raw !== 'string') return null
+  const key = raw.trim()
+  return key !== '' && KEY_PATTERN.test(key) ? key : null
+}
+
 export class LlmConfigError extends Error {
-  constructor() {
-    super('LLM 未配置：缺少 DEEPSEEK_API_KEY 环境变量')
+  /** 缺 Key 的原因：'server' 部署者没配环境变量；'user' 访客填的 Key 格式无效 */
+  source: 'server' | 'user'
+  constructor(source: 'server' | 'user' = 'server') {
+    super(source === 'user' ? '访客提供的 API Key 格式无效' : 'LLM 未配置：缺少 DEEPSEEK_API_KEY 环境变量')
     this.name = 'LlmConfigError'
+    this.source = source
   }
 }
 
@@ -42,11 +60,14 @@ interface ChatOptions {
   maxTokens?: number
   /** 强制 JSON 输出（DeepSeek 支持 response_format: json_object） */
   jsonMode?: boolean
+  /** 访客自带的 Key（BYOK）。提供时优先于服务端环境变量使用。 */
+  userKey?: string | null
 }
 
 /** 调用 DeepSeek chat/completions，返回助手回复文本。失败抛 LlmCallError。 */
 export async function chat(opts: ChatOptions): Promise<string> {
-  const apiKey = getApiKey()
+  const serverKey = getApiKey()
+  const apiKey = opts.userKey ?? serverKey
   if (!apiKey) throw new LlmConfigError()
 
   const baseUrl = (process.env.DEEPSEEK_BASE_URL ?? DEFAULT_BASE_URL).replace(/\/+$/, '')

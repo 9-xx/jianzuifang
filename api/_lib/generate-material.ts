@@ -7,7 +7,7 @@
  * 材料由 AI 现场生成而非抓取真实文章：①长度难度可控；②规避版权问题。
  * 材料文本不落库，随响应返回后由前端存入用户本地浏览器。
  */
-import { chat, parseJsonReply, LlmConfigError, LlmCallError } from './llm.js'
+import { chat, parseJsonReply, extractUserKey, LlmConfigError, LlmCallError } from './llm.js'
 import { checkRateLimit } from './rate-limit.js'
 import { LIMITS, type ApiRequest, type ApiResponseWriter } from './types.js'
 
@@ -49,6 +49,7 @@ export async function handleGenerateMaterial(
 
   try {
     const raw = await chat({
+      userKey: extractUserKey(req.headers),
       messages: [
         {
           role: 'system',
@@ -82,7 +83,12 @@ export async function handleGenerateMaterial(
     res.json(200, { material })
   } catch (err) {
     if (err instanceof LlmConfigError) {
-      res.json(503, { error: '服务端尚未配置大模型 Key，请联系部署者设置 DEEPSEEK_API_KEY' })
+      res.json(
+        503,
+        err.source === 'user'
+          ? { error: '你填写的 API Key 格式不对，请在右上角「Key」里检查后重试', keyRequired: true }
+          : { error: '服务端尚未配置大模型 Key。请在右上角「Key」里填入你自己的 DeepSeek Key，或联系部署者配置', keyRequired: true },
+      )
       return true
     }
     if (err instanceof LlmCallError) {

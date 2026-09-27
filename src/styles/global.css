@@ -132,6 +132,162 @@ body {
   font-weight: 600;
 }
 
+/* ---------- 顶栏右侧（导航 + Key 入口） ---------- */
+
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.key-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  border-radius: 999px;
+  padding: 6px 13px;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+  white-space: nowrap;
+}
+
+.key-button:hover {
+  border-color: var(--primary);
+  color: var(--primary-strong);
+}
+
+.key-button.key-set {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  color: var(--primary-strong);
+}
+
+/* ---------- Key 设置弹层 ---------- */
+
+.dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(30, 44, 38, 0.42);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 100;
+}
+
+.dialog-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: var(--shadow-lift);
+  width: 100%;
+  max-width: 420px;
+  padding: 22px 24px;
+}
+
+.dialog-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dialog-close {
+  border: none;
+  background: none;
+  font-size: 24px;
+  line-height: 1;
+  color: var(--text-faint);
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+
+.dialog-close:hover {
+  background: var(--bg-soft);
+  color: var(--text);
+}
+
+.dialog-desc {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.8;
+  margin: 12px 0 14px;
+}
+
+.dialog-input {
+  width: 100%;
+  padding: 11px 13px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font: inherit;
+  font-size: 14px;
+  letter-spacing: 0.5px;
+}
+
+.dialog-input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(49, 93, 78, 0.15);
+}
+
+.dialog-error {
+  color: var(--danger);
+  font-size: 12.5px;
+  margin: 8px 0 0;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.dialog-hint {
+  font-size: 12px;
+  color: var(--text-faint);
+  line-height: 1.7;
+  margin: 14px 0 0;
+  border-top: 1px dashed var(--border);
+  padding-top: 12px;
+}
+
+.dialog-ok {
+  text-align: center;
+  color: var(--success);
+  font-weight: 600;
+  margin: 24px 0;
+}
+
+/* 「填 Key」引导条（反馈页 503 时出现） */
+.key-notice {
+  background: var(--warning-soft);
+  border: 1px solid #f0dfae;
+  border-radius: var(--radius);
+  padding: 14px 18px;
+  margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.key-notice p {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.7;
+}
+
 /* ---------- 排版 ---------- */
 
 .page-title {

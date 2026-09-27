@@ -8,7 +8,7 @@
  *
  * 无状态：请求处理完即丢弃，不落库。
  */
-import { chat, parseJsonReply, LlmConfigError, LlmCallError } from './llm.js'
+import { chat, parseJsonReply, extractUserKey, LlmConfigError, LlmCallError } from './llm.js'
 import { ALL_SEMANTIC_TAGS } from '../../src/data/semantic-tags.js'
 import {
   isSimulateSceneType,
@@ -218,9 +218,15 @@ function sanitizeText(v: unknown, fallback: string): string {
   return isNonEmptyString(v) ? v.trim() : fallback
 }
 
-function llmFail(res: ApiResponseWriter, err: unknown): void {
+function llmFail(res: ApiResponseWriter, err: unknown, source?: 'user' | 'server'): void {
   if (err instanceof LlmConfigError) {
-    res.json(503, { error: '服务端尚未配置大模型 Key，请联系部署者设置 DEEPSEEK_API_KEY' })
+    const src = source ?? err.source
+    res.json(
+      503,
+      src === 'user'
+        ? { error: '你填写的 API Key 格式不对，请在右上角「Key」里检查后重试', keyRequired: true }
+        : { error: '服务端尚未配置大模型 Key。请在右上角「Key」里填入你自己的 DeepSeek Key，或联系部署者配置', keyRequired: true },
+    )
     return
   }
   if (err instanceof LlmCallError) {
@@ -235,10 +241,12 @@ function llmFail(res: ApiResponseWriter, err: unknown): void {
 async function handlePrepare(
   res: ApiResponseWriter,
   input: { sceneType: SceneType; persona: Persona; brief: string; material: string },
+  userKey: string | null,
 ): Promise<void> {
   const role = roleLabel(input.sceneType)
   try {
     const raw = await chat({
+      userKey,
       temperature: 0.4,
       jsonMode: true,
       maxTokens: 1200,
@@ -291,7 +299,7 @@ dimensions 必须 3 到 4 个；每个 questions 1 到 2 句。`,
 
     res.json(200, { dimensions, opening: truncate(opening, 200) })
   } catch (err) {
-    llmFail(res, err)
+    llmFail(res, err, err instanceof LlmConfigError ? err.source : undefined)
   }
 }
 
@@ -305,6 +313,7 @@ async function handleTurn(
     dimensions: SimulateDimension[]
     transcript: SimulateTurn[]
   },
+  userKey: string | null,
 ): Promise<void> {
   const userTurns = countUserTurns(input.transcript)
   if (userTurns < 1) {
@@ -322,6 +331,7 @@ async function handleTurn(
 
   try {
     const raw = await chat({
+      userKey,
       temperature: 0.7,
       jsonMode: true,
       maxTokens: 400,
@@ -368,7 +378,7 @@ ${sceneTurnHint(input.sceneType, userTurns, mustWrap)}
     const forceEnd = mustWrap || parsed.forceEnd === true
     res.json(200, { reply, forceEnd })
   } catch (err) {
-    llmFail(res, err)
+    llmFail(res, err, err instanceof LlmConfigError ? err.source : undefined)
   }
 }
 
@@ -383,6 +393,7 @@ async function handleReview(
     transcript: SimulateTurn[]
     previousAttempt: ReturnType<typeof sanitizePreviousAttempt>
   },
+  userKey: string | null,
 ): Promise<void> {
   if (countUserTurns(input.transcript) < 1) {
     res.json(400, { error: '这场还没有你的回答，没法复盘' })
@@ -393,6 +404,7 @@ async function handleReview(
 
   try {
     const raw = await chat({
+      userKey,
       temperature: 0.4,
       jsonMode: true,
       maxTokens: input.previousAttempt ? 1800 : 1600,
@@ -485,7 +497,7 @@ ${compare.jsonField}  "tags": [],
         : {}),
     })
   } catch (err) {
-    llmFail(res, err)
+    llmFail(res, err, err instanceof LlmConfigError ? err.source : undefined)
   }
 }
 
@@ -531,15 +543,17 @@ export async function handleSimulate(
     transcript: sanitizeTranscript(body.transcript),
     previousAttempt: sanitizePreviousAttempt(body.previousAttempt),
   }
+  // BYOK：访客自带的 Key 仅当次请求有效，用完即丢
+  const userKey = extractUserKey(req.headers)
 
   if (action === 'prepare') {
-    await handlePrepare(res, input)
+    await handlePrepare(res, input, userKey)
     return true
   }
   if (action === 'turn') {
-    await handleTurn(res, input)
+    await handleTurn(res, input, userKey)
     return true
   }
-  await handleReview(res, input)
+  await handleReview(res, input, userKey)
   return true
 }

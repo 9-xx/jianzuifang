@@ -84,7 +84,10 @@ const server = http.createServer(async (req, res) => {
     method: 'POST',
     path,
     body,
-    headers: { 'x-forwarded-for': req.socket.remoteAddress ?? '' },
+    // 透传全部请求头（含 x-user-key，BYOK 用）；Node 头名均为小写
+    headers: Object.fromEntries(
+      Object.entries(req.headers).map(([k, v]) => [k, Array.isArray(v) ? v[0] : (v ?? undefined)]),
+    ) as Record<string, string | undefined>,
   }
 
   let handled = false

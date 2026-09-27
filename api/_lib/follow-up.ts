@@ -6,7 +6,7 @@
  *
  * 无状态：请求处理完即丢弃，不落库。
  */
-import { chat, parseJsonReply, LlmConfigError, LlmCallError } from './llm.js'
+import { chat, parseJsonReply, extractUserKey, LlmConfigError, LlmCallError } from './llm.js'
 import { checkRateLimit } from './rate-limit.js'
 import { LIMITS, type ApiRequest, type ApiResponseWriter } from './types.js'
 
@@ -65,6 +65,7 @@ export async function handleFollowUp(
 
   try {
     const raw = await chat({
+      userKey: extractUserKey(req.headers),
       messages: [
         {
           role: 'system',
@@ -105,7 +106,12 @@ ${truncate(body.userContent.trim(), LIMITS.maxUserContent)}
     res.json(200, { questions })
   } catch (err) {
     if (err instanceof LlmConfigError) {
-      res.json(503, { error: '服务端尚未配置大模型 Key，请联系部署者设置 DEEPSEEK_API_KEY' })
+      res.json(
+        503,
+        err.source === 'user'
+          ? { error: '你填写的 API Key 格式不对，请在右上角「Key」里检查后重试', keyRequired: true }
+          : { error: '服务端尚未配置大模型 Key。请在右上角「Key」里填入你自己的 DeepSeek Key，或联系部署者配置', keyRequired: true },
+      )
       return true
     }
     if (err instanceof LlmCallError) {

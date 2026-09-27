@@ -7,7 +7,7 @@
  *
  * 无状态：请求处理完即丢弃，不落库。填充词/模糊表达不在此接口处理（前端词库匹配）。
  */
-import { chat, parseJsonReply, LlmConfigError, LlmCallError } from './llm.js'
+import { chat, parseJsonReply, extractUserKey, LlmConfigError, LlmCallError } from './llm.js'
 import { ALL_SEMANTIC_TAGS } from '../../src/data/semantic-tags.js'
 import { checkRateLimit } from './rate-limit.js'
 import {
@@ -243,6 +243,7 @@ export async function handleFeedback(
 
   try {
     const raw = await chat({
+      userKey: extractUserKey(req.headers),
       messages: [
         { role: 'system', content: prompt.system },
         { role: 'user', content: prompt.user },
@@ -283,7 +284,12 @@ export async function handleFeedback(
     res.json(200, result)
   } catch (err) {
     if (err instanceof LlmConfigError) {
-      res.json(503, { error: '服务端尚未配置大模型 Key，请联系部署者设置 DEEPSEEK_API_KEY' })
+      res.json(
+        503,
+        err.source === 'user'
+          ? { error: '你填写的 API Key 格式不对，请在右上角「Key」里检查后重试', keyRequired: true }
+          : { error: '服务端尚未配置大模型 Key。请在右上角「Key」里填入你自己的 DeepSeek Key，或联系部署者配置', keyRequired: true },
+      )
       return true
     }
     if (err instanceof LlmCallError) {
