@@ -16,6 +16,8 @@ import SimulatePlayPage from './pages/SimulatePlayPage'
 import NotFoundPage from './pages/NotFoundPage'
 import { ErrorBoundary } from './pages/ErrorBoundary'
 import { isStorageAvailable } from './lib/storage'
+import Icon from './components/Icon'
+import PageMotion from './components/PageMotion'
 import './styles/global.css'
 
 function TopBar() {
@@ -29,13 +31,13 @@ function TopBar() {
     <header className="topbar">
       <div className="topbar-inner">
         <Link to="/" className="brand">
-          <span className="brand-mark">健</span>
+          <span className="brand-mark"><Icon name="wave" size={22} /></span>
           有氧健嘴房
         </Link>
         {!isPracticeFlow && (
-          <nav className="topnav">
+          <nav className="topnav" aria-label="主导航">
             <NavLink to="/" end className={({ isActive }) => (isActive ? 'active' : '')}>
-              练习
+              练习空间
             </NavLink>
             <NavLink
               to="/history"
@@ -47,7 +49,7 @@ function TopBar() {
               to="/frequent-issues"
               className={({ isActive }) => (isActive ? 'active' : '')}
             >
-              习惯
+              表达习惯
             </NavLink>
           </nav>
         )}
@@ -68,6 +70,7 @@ function App() {
               当前浏览器环境下无法保存记录（可能是隐私模式），本次练习可以正常进行，但历史记录和表达习惯功能将无法生效。
             </div>
           )}
+          <PageMotion>
           <Routes>
             <Route path="/" element={<HomePage />} />
             <Route path="/scenarios/:mode" element={<ScenarioSelectPage />} />
@@ -81,6 +84,7 @@ function App() {
             <Route path="/frequent-issues" element={<FrequentIssuesPage />} />
             <Route path="*" element={<NotFoundPage />} />
           </Routes>
+          </PageMotion>
         </main>
       </ErrorBoundary>
     </BrowserRouter>

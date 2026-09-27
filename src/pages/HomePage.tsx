@@ -1,172 +1,59 @@
-/**
- * 首页：练习模式选择 + "最近使用"快捷入口（最多 2 条，精确到大模式层级）
- * + 练习统计（累计次数 / 连续天数 / 累计时长，实时计算不落库）。
- */
 import { useMemo } from 'react'
+import { useHomeMotion } from '../hooks/useHomeMotion'
 import { useNavigate } from 'react-router-dom'
-import { loadSettings } from '../lib/storage'
-import { loadSessions } from '../lib/storage'
+import { loadSettings, loadSessions } from '../lib/storage'
 import { computePracticeStats, lastPracticeLabel, totalDurationLabel } from '../lib/stats'
 import type { PracticeMode } from '../lib/types'
+import Icon, { type IconName } from '../components/Icon'
 
-const MODE_ROUTES: Record<PracticeMode, string> = {
-  即兴问答: '/scenarios/即兴问答',
-  结构化表达: '/scenarios/结构化表达',
-  材料模拟: '/simulate',
-}
+const MODES: { name: PracticeMode; title: string; route: string; icon: IconName; tag: string; description: string; detail: string; className: string }[] = [
+  { name: '即兴问答', title: '即兴问答', route: '/scenarios/即兴问答', icon: 'mic', tag: '练反应', description: '突然被问到，也能从容开口。', detail: '在职场与日常场景中，练习把当下的想法说清楚。', className: 'impromptu' },
+  { name: '结构化表达', title: '结构化表达', route: '/scenarios/结构化表达', icon: 'layers', tag: '练逻辑', description: '让零散的想法，有条理地被听见。', detail: '从自由表达或材料总结开始，组织观点，讲出重点。', className: 'structured' },
+  { name: '材料模拟', title: '材料模拟', route: '/simulate', icon: 'document', tag: '练实战', description: '重要的对话，提前练一遍。', detail: '带上简历、岗位描述或会议材料，在真实语境里练习。', className: 'simulate' },
+]
 
 export default function HomePage() {
+  const root = useHomeMotion()
   const navigate = useNavigate()
   const recentModes = useMemo(() => loadSettings().recentModes ?? [], [])
   const stats = useMemo(() => computePracticeStats(loadSessions()), [])
-  const lastLabel = useMemo(() => lastPracticeLabel(stats), [stats])
-
-  if (stats.totalCount === 0) {
-    return (
-      <div>
-        <h1 className="page-title">今天练点什么？</h1>
-        <p className="page-subtitle">
-          把脑子里的想法练到能说出口。无需注册，说完告诉你哪一句还停在脑子里。
-        </p>
-
-        <div className="mode-grid mt-16">
-          <button
-            className="mode-card mode-impromptu"
-            onClick={() => navigate('/scenarios/即兴问答')}
-          >
-            <div className="mode-icon">🎤</div>
-            <h2>即兴问答训练</h2>
-            <p>被追问时把判断说出来，而不是只在脑子里组织。</p>
-          </button>
-
-          <button
-            className="mode-card mode-structured"
-            onClick={() => navigate('/scenarios/结构化表达')}
-          >
-            <div className="mode-icon">🧩</div>
-            <h2>结构化表达训练</h2>
-            <p>自由生成：把零散想法说成一段完整的话；整理总结：读完之后用自己的判断说出来。</p>
-          </button>
-
-          <button
-            className="mode-card mode-simulate"
-            onClick={() => navigate('/simulate')}
-          >
-            <div className="mode-icon">🎯</div>
-            <h2>材料模拟</h2>
-            <p>贴上简历、JD、会议材料或一篇要讲的东西。对方入戏，结束后才告诉你有没有把判断说出口。</p>
-          </button>
-        </div>
-
-        <div className="card mt-24">
-          <div className="row-between wrap">
-            <div>
-              <strong>你的表达记忆</strong>
-              <div className="muted mt-8">
-                系统会记住你反复没说完整的地方（需要你确认），你也可以主动告诉它。
-              </div>
-            </div>
-            <button className="btn btn-secondary btn-sm" onClick={() => navigate('/frequent-issues')}>
-              查看
-            </button>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
+  const lastLabel = lastPracticeLabel(stats)
   return (
-    <div>
-      <h1 className="page-title">今天练点什么？</h1>
-      <p className="page-subtitle">
-        {lastLabel ? `${lastLabel}。` : ''}说完告诉你哪一句还停在脑子里。
-      </p>
-
-      <div className="stats-strip" role="group" aria-label="练习统计">
-        <div className="stat-cell">
-          <div className="stat-num">{stats.totalCount}</div>
-          <div className="stat-label">累计练习</div>
+    <div className="home-page" ref={root}>
+      <section className="home-hero">
+        <div className="hero-copy">
+          <div className="eyebrow"><span className="status-dot" /> 给表达一点生长的空间</div>
+          <h1>把心里的想法，<br />练成嘴边的<span>好表达。</span></h1>
+          <p>不必一开口就完美。每一次练习，<br className="desktop-break" />都是让想法更清楚、表达更从容的一小步。</p>
+          <button className="btn btn-primary hero-cta" onClick={() => navigate('/scenarios/即兴问答')}>开始今天的练习 <Icon name="arrow" size={18} /></button>
+          <div className="hero-note">无需注册 <span>·</span> 随时开口 <span>·</span> 练后获得反馈</div>
         </div>
-        <div className="stat-divider" aria-hidden="true" />
-        <div className="stat-cell">
-          <div className="stat-num">
-            {stats.streakDays > 0 ? (
-              <>
-                {stats.streakDays}
-                <span className="stat-flame" aria-hidden="true">🔥</span>
-              </>
-            ) : (
-              '—'
-            )}
-          </div>
-          <div className="stat-label">连续天数</div>
+        <div className="hero-art" aria-hidden="true">
+          <div className="art-orbit orbit-one" /><div className="art-orbit orbit-two" />
+          <div className="art-spark spark-one">✳</div><div className="art-spark spark-two">✳</div>
+          <div className="thought-bubble">嗯…我想说的是</div>
+          <div className="voice-bubble"><div className="voice-bars">{[22, 38, 56, 32, 68, 86, 52, 70, 42, 28, 44].map((height, i) => <i key={i} style={{ height }} />)}</div></div>
+          <div className="idea-bubble"><Icon name="leaf" size={30} /><span>想法，正在被听见</span></div>
+          <div className="art-caption">A LITTLE PRACTICE. A CLEARER YOU.</div>
         </div>
-        <div className="stat-divider" aria-hidden="true" />
-        <div className="stat-cell">
-          <div className="stat-num">{totalDurationLabel(stats)}</div>
-          <div className="stat-label">累计开口</div>
+      </section>
+
+      <section className="training-section" aria-labelledby="training-title">
+        <div className="training-heading"><div><div className="eyebrow">YOUR DAILY PRACTICE</div><h2 id="training-title">今天，想怎么练？</h2></div><span>选一种方式，从开口开始</span></div>
+        <div className="training-grid">
+          {MODES.map((mode, index) => <button key={mode.name} className={`training-card training-${mode.className}`} onClick={() => navigate(mode.route)}>
+            <div className="training-card-top"><span className="training-icon"><Icon name={mode.icon} size={27} /></span><span className="training-tag">{mode.tag}</span></div>
+            <span className="training-index">0{index + 1}</span><h3>{mode.title}</h3><p className="training-description">{mode.description}</p><p className="training-detail">{mode.detail}</p>
+            <div className="training-action">进入练习 <span><Icon name="arrow" size={18} /></span></div>
+          </button>)}
         </div>
-      </div>
+      </section>
 
-      {recentModes.length > 0 && (
-        <>
-          <div className="section-title">最近使用</div>
-          <div className="row wrap mb-16">
-            {recentModes.map((m) => (
-              <button
-                key={m.mode}
-                className="btn btn-secondary"
-                onClick={() => navigate(MODE_ROUTES[m.mode])}
-              >
-                ⏱ {m.mode}
-              </button>
-            ))}
-          </div>
-        </>
-      )}
+      {stats.totalCount > 0 && <section className="practice-progress" aria-label="练习统计"><div><strong>每一次开口，都算数。</strong><p>{lastLabel}</p></div><div className="progress-numbers"><div><strong>{stats.totalCount}</strong><span>累计练习</span></div><div><strong>{stats.streakDays}</strong><span>连续天数</span></div><div><strong>{totalDurationLabel(stats)}</strong><span>累计开口</span></div></div></section>}
+      {recentModes.length > 0 && <div className="recent-practice"><span>继续练习</span>{recentModes.map(m => <button key={m.mode} className="btn btn-secondary btn-sm" onClick={() => navigate(MODES.find(mode => mode.name === m.mode)?.route ?? '/')}><Icon name="clock" size={15} />{m.mode}<Icon name="arrow" size={14} /></button>)}</div>}
 
-      <div className="mode-grid mt-16">
-        <button
-          className="mode-card mode-impromptu"
-          onClick={() => navigate('/scenarios/即兴问答')}
-        >
-          <div className="mode-icon">🎤</div>
-          <h2>即兴问答训练</h2>
-          <p>被追问时把判断说出来，而不是只在脑子里组织。</p>
-        </button>
-
-        <button
-          className="mode-card mode-structured"
-          onClick={() => navigate('/scenarios/结构化表达')}
-        >
-          <div className="mode-icon">🧩</div>
-          <h2>结构化表达训练</h2>
-          <p>自由生成：把零散想法说成一段完整的话；整理总结：读完之后用自己的判断说出来。</p>
-        </button>
-
-        <button
-          className="mode-card mode-simulate"
-          onClick={() => navigate('/simulate')}
-        >
-          <div className="mode-icon">🎯</div>
-          <h2>材料模拟</h2>
-          <p>贴上简历、JD、会议材料或一篇要讲的东西。对方入戏，结束后才告诉你有没有把判断说出口。</p>
-        </button>
-      </div>
-
-      <div className="card mt-24">
-        <div className="row-between wrap">
-          <div>
-            <strong>你的表达记忆</strong>
-            <div className="muted mt-8">
-              系统会记住你反复没说完整的地方（需要你确认），你也可以主动告诉它。
-            </div>
-          </div>
-          <button className="btn btn-secondary btn-sm" onClick={() => navigate('/frequent-issues')}>
-            查看
-          </button>
-        </div>
-      </div>
+      <section className="memory-panel"><span className="memory-icon"><Icon name="leaf" size={26} /></span><div><h2>你的表达，值得被记住。</h2><p>记录反复遇到的表达习惯，让下一次练习更有方向。</p></div><button className="btn btn-ghost" onClick={() => navigate('/frequent-issues')}>查看表达记忆 <Icon name="arrow" size={18} /></button></section>
+      <footer className="home-footer"><span>有氧健嘴房 · 让表达成为日常</span><span>慢慢来，每一次开口都在进步。</span></footer>
     </div>
   )
 }
