@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ApiClientError, requestSimulateReview, requestSimulateTurn } from '../lib/api-client'
+import KeyGateBanner from '../components/KeyGateBanner'
 import { buildSessionDraft, finalizeAndSaveSession, mergeAiIntoDraft } from '../lib/practice-flow'
 import { findPreviousComparableSession, toPreviousAttempt } from '../lib/compare'
 import { loadSettings, StorageUnavailableError } from '../lib/storage'
@@ -44,6 +45,7 @@ export default function SimulatePlayPage() {
   const [sending, setSending] = useState(false)
   const [reviewing, setReviewing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [keyNeeded, setKeyNeeded] = useState(false)
   const [showMaterial, setShowMaterial] = useState(false)
   const liveRef = useRef(live)
   liveRef.current = live
@@ -149,7 +151,9 @@ export default function SimulatePlayPage() {
     } catch (err) {
       persist(current)
       setText(content)
-      setError(err instanceof ApiClientError ? err.message : '对方没接住，请再试一次')
+      setKeyNeeded(err instanceof ApiClientError && err.keyRequired)
+      setError(err instanceof ApiClientError && !err.keyRequired ? err.message : null)
+      if (!(err instanceof ApiClientError)) setError('对方没接住，请再试一次')
     } finally {
       setSending(false)
     }
@@ -223,7 +227,9 @@ export default function SimulatePlayPage() {
         navigate(`/feedback/${session.id}`, { state: { draft: session } })
       }
     } catch (err) {
-      setError(err instanceof ApiClientError ? err.message : '复盘生成失败，请点击重试')
+      setKeyNeeded(err instanceof ApiClientError && err.keyRequired)
+      setError(err instanceof ApiClientError && !err.keyRequired ? err.message : null)
+      if (!(err instanceof ApiClientError)) setError('复盘生成失败，请点击重试')
     } finally {
       setReviewing(false)
     }
@@ -309,6 +315,8 @@ export default function SimulatePlayPage() {
           )}
         </div>
       )}
+
+      {keyNeeded && <KeyGateBanner />}
 
       {error && (
         <div className="notice notice-error mb-16" role="alert">

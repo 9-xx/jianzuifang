@@ -1,9 +1,10 @@
 /**
  * 访客自带 API Key（BYOK）——只存在浏览器 localStorage。
  *
+ * - 部署时不配置服务端 Key，AI 能力完全由访客自己的 Key 驱动。
  * - Key 不会上传到本站服务器以外的任何地方；每次调用 AI 接口时随请求头带给
  *   后端，后端仅当次使用、用完即丢、不落任何日志或存储。
- * - 没填 Key 时，后端回退使用部署者配置的环境变量（如果部署者配了）。
+ * - 没 Key 或 Key 无效时，AI 反馈类功能不可用，页面会引导访客去填写。
  */
 
 const KEY_STORAGE = 'expression-gym:user-api-key'
@@ -69,4 +70,19 @@ export function isKeyRequiredError(payload: unknown): boolean {
     payload !== null &&
     (payload as { keyRequired?: unknown }).keyRequired === true
   )
+}
+
+/** 前端本地预检：没填 Key 时直接拦在浏览器侧，不用等后端 503 */
+export function ensureUserApiKey(): string {
+  const key = loadUserApiKey()
+  if (!key) throw new ApiKeyMissingError()
+  return key
+}
+
+/** 访客还没填 Key 就触发了 AI 调用 */
+export class ApiKeyMissingError extends Error {
+  constructor() {
+    super('还没有填写 DeepSeek API Key，点右上角「Key」填入后重试')
+    this.name = 'ApiKeyMissingError'
+  }
 }

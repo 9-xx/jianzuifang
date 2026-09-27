@@ -74,7 +74,7 @@ export default function KeyDialog({ onClose }: { onClose: () => void }) {
         ) : (
           <>
             <p className="dialog-desc">
-              把你自己的 Key 填在这里，AI 反馈就会走你的额度。Key 只保存在本机浏览器，
+              填入你自己的 DeepSeek Key，AI 反馈就会走你的额度。Key 只保存在本机浏览器，
               每次请求时直接交给 DeepSeek 使用，本站不会存储或记录它。
             </p>
             <input
@@ -100,8 +100,8 @@ export default function KeyDialog({ onClose }: { onClose: () => void }) {
               </button>
             </div>
             <p className="dialog-hint">
-              还没有 Key？到 platform.deepseek.com 注册后即可免费获取。
-              不填也可以，如果部署者配置了共享 Key，会自动使用。
+              还没有 Key？到 platform.deepseek.com 注册即可获取。没有填写 Key 的话，AI
+              反馈将无法使用（本地练习和词库反馈不受影响）。
             </p>
           </>
         )}

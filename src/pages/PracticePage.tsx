@@ -12,6 +12,7 @@ import { loadSettings, StorageUnavailableError } from '../lib/storage'
 import { updatePreferredInputMethod } from '../lib/settings'
 import { checkSpeechSupport, SpeechDictation } from '../lib/speech'
 import { ApiClientError, requestFollowUp, requestMaterial } from '../lib/api-client'
+import KeyGateBanner from '../components/KeyGateBanner'
 import { buildSessionDraft } from '../lib/practice-flow'
 import type { InputMethod, PracticeMode, SubMode } from '../lib/types'
 
@@ -92,16 +93,19 @@ export default function PracticePage() {
   const [material, setMaterial] = useState<string | null>(null)
   const [materialLoading, setMaterialLoading] = useState(false)
   const [materialError, setMaterialError] = useState<string | null>(null)
+  const [materialKeyNeeded, setMaterialKeyNeeded] = useState(false)
   const [phase, setPhase] = useState<Phase>(subMode === '整理总结' ? 'reading' : 'warmup')
 
   const generateMaterial = useCallback(async () => {
     if (!scenario || !('topic' in scenario)) return
     setMaterialLoading(true)
     setMaterialError(null)
+    setMaterialKeyNeeded(false)
     try {
       const res = await requestMaterial(scenario.topic)
       setMaterial(res.material)
     } catch (err) {
+      setMaterialKeyNeeded(err instanceof ApiClientError && err.keyRequired)
       setMaterialError(err instanceof Error ? err.message : '内容生成失败，点击重新生成')
     } finally {
       setMaterialLoading(false)
@@ -127,6 +131,7 @@ export default function PracticePage() {
   const [followUpQuestions, setFollowUpQuestions] = useState<string[]>([])
   const [followUpLoading, setFollowUpLoading] = useState(false)
   const [followUpError, setFollowUpError] = useState<string | null>(null)
+  const [followUpKeyNeeded, setFollowUpKeyNeeded] = useState(false)
 
   const stopDictation = useCallback(() => {
     dictationRef.current?.abort()
@@ -244,6 +249,7 @@ export default function PracticePage() {
       setFollowUpQuestions([])
       followUpQuestionsRef.current = []
       setFollowUpError(null)
+      setFollowUpKeyNeeded(false)
       setFollowUpLoading(true)
       setPhase('followup')
       stopDictation()
@@ -265,8 +271,13 @@ export default function PracticePage() {
         setFollowUpQuestions(questions)
       } catch (err) {
         if (skippedFollowUpRef.current) return
+        setFollowUpKeyNeeded(err instanceof ApiClientError && err.keyRequired)
         setFollowUpError(
-          err instanceof ApiClientError ? err.message : '追问生成失败，可以跳过或重试',
+          err instanceof ApiClientError && !err.keyRequired
+            ? err.message
+            : err instanceof Error
+              ? null
+              : '追问生成失败，可以跳过或重试',
         )
       } finally {
         if (!skippedFollowUpRef.current) setFollowUpLoading(false)
@@ -380,6 +391,7 @@ export default function PracticePage() {
               </button>
             </div>
           )}
+          {materialKeyNeeded && <KeyGateBanner />}
           {material && <div className="material-block">{material}</div>}
           {material && phase === 'reading' && (
             <div className="btn-row">
@@ -456,6 +468,7 @@ export default function PracticePage() {
               </div>
             </div>
           )}
+          {followUpKeyNeeded && <KeyGateBanner />}
           {followUpQuestions.length > 0 && (
             <ol className="followup-list">
               {followUpQuestions.map((q) => (

@@ -15,7 +15,7 @@ import { loadUserApiKey } from './user-key.js'
 export class ApiClientError extends Error {
   /** 是否可重试（网络/服务端错误可重试，参数错误不可） */
   retryable: boolean
-  /** 服务端要求配置 Key（BYOK：引导用户去填自己的 Key） */
+  /** 需要访客配置 Key（BYOK：引导用户去填自己的 Key） */
   keyRequired: boolean
   constructor(message: string, retryable: boolean, keyRequired = false) {
     super(message)
@@ -25,11 +25,23 @@ export class ApiClientError extends Error {
   }
 }
 
+/** 纯 BYOK 部署：没填 Key 就不发请求，直接给出可操作的提示 */
+function requireLocalKey(): string {
+  const key = loadUserApiKey()
+  if (!key) {
+    throw new ApiClientError(
+      '还没有填写 DeepSeek API Key。点右上角「Key」填入你自己的 Key 后重试（只存本机，本站不会保存）',
+      true,
+      true,
+    )
+  }
+  return key
+}
+
 async function postJson<T>(path: string, body: unknown): Promise<T> {
-  // BYOK：访客自己的 Key 随请求头带给后端，仅当次使用
-  const userKey = loadUserApiKey()
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-  if (userKey) headers['X-User-Key'] = userKey
+  // 纯 BYOK：Key 必填，随请求头带给后端，仅当次使用
+  const userKey = requireLocalKey()
+  const headers: Record<string, string> = { 'Content-Type': 'application/json', 'X-User-Key': userKey }
 
   let res: Response
   try {

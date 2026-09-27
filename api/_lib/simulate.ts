@@ -8,7 +8,7 @@
  *
  * 无状态：请求处理完即丢弃，不落库。
  */
-import { chat, parseJsonReply, extractUserKey, LlmConfigError, LlmCallError } from './llm.js'
+import { chat, parseJsonReply, requireUserKey, LlmConfigError, LlmCallError, type LlmKeyIssue } from './llm.js'
 import { ALL_SEMANTIC_TAGS } from '../../src/data/semantic-tags.js'
 import {
   isSimulateSceneType,
@@ -218,14 +218,14 @@ function sanitizeText(v: unknown, fallback: string): string {
   return isNonEmptyString(v) ? v.trim() : fallback
 }
 
-function llmFail(res: ApiResponseWriter, err: unknown, source?: 'user' | 'server'): void {
+function llmFail(res: ApiResponseWriter, err: unknown, source?: LlmKeyIssue): void {
   if (err instanceof LlmConfigError) {
-    const src = source ?? err.source
+    const issue = source ?? err.source
     res.json(
       503,
-      src === 'user'
-        ? { error: '你填写的 API Key 格式不对，请在右上角「Key」里检查后重试', keyRequired: true }
-        : { error: '服务端尚未配置大模型 Key。请在右上角「Key」里填入你自己的 DeepSeek Key，或联系部署者配置', keyRequired: true },
+      issue === 'invalid'
+        ? { error: '你填写的 API Key 格式不对：应以 sk- 开头，后面跟一串字母数字。请点右上角「Key」检查后重试', keyRequired: true }
+        : { error: '还没有填写 DeepSeek API Key。点右上角「Key」填入你自己的 Key 后重试（只存本机，本站不会保存）', keyRequired: true },
     )
     return
   }
@@ -241,7 +241,7 @@ function llmFail(res: ApiResponseWriter, err: unknown, source?: 'user' | 'server
 async function handlePrepare(
   res: ApiResponseWriter,
   input: { sceneType: SceneType; persona: Persona; brief: string; material: string },
-  userKey: string | null,
+  userKey: string,
 ): Promise<void> {
   const role = roleLabel(input.sceneType)
   try {
@@ -313,7 +313,7 @@ async function handleTurn(
     dimensions: SimulateDimension[]
     transcript: SimulateTurn[]
   },
-  userKey: string | null,
+  userKey: string,
 ): Promise<void> {
   const userTurns = countUserTurns(input.transcript)
   if (userTurns < 1) {
@@ -393,7 +393,7 @@ async function handleReview(
     transcript: SimulateTurn[]
     previousAttempt: ReturnType<typeof sanitizePreviousAttempt>
   },
-  userKey: string | null,
+  userKey: string,
 ): Promise<void> {
   if (countUserTurns(input.transcript) < 1) {
     res.json(400, { error: '这场还没有你的回答，没法复盘' })
@@ -512,6 +512,18 @@ export async function handleSimulate(
     return true
   }
 
+  // 纯 BYOK：先验访客 Key，没填/格式不对直接拦下，不进业务逻辑
+  let userKey: string
+  try {
+    userKey = requireUserKey(req.headers)
+  } catch (err) {
+    if (err instanceof LlmConfigError) {
+      llmFail(res, err)
+      return true
+    }
+    throw err
+  }
+
   let body: SimulateRequestBody
   try {
     body = JSON.parse(req.body) as SimulateRequestBody
@@ -544,8 +556,6 @@ export async function handleSimulate(
     previousAttempt: sanitizePreviousAttempt(body.previousAttempt),
   }
   // BYOK：访客自带的 Key 仅当次请求有效，用完即丢
-  const userKey = extractUserKey(req.headers)
-
   if (action === 'prepare') {
     await handlePrepare(res, input, userKey)
     return true

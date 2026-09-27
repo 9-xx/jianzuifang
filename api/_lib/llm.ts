@@ -3,8 +3,8 @@
  *
  * 安全约定：
  * - API Key 只在服务端使用，绝不写进代码、绝不返回给前端、不做任何持久化。
- * - Key 来源优先级：访客自带的 Key（BYOK，随请求头传入，仅当次使用）>
- *   服务端环境变量 DEEPSEEK_API_KEY。两者都没有时报 LlmConfigError。
+ * - 本部署为纯 BYOK 模式：仅使用访客随请求头自带的 Key（X-User-Key），
+ *   服务端不配置共享 Key。访客没填或格式不对时报 LlmConfigError。
  */
 import process from 'node:process'
 
@@ -23,25 +23,30 @@ export interface ChatMessage {
   content: string
 }
 
-export function getApiKey(): string | null {
-  const key = process.env.DEEPSEEK_API_KEY
-  if (!key || key === 'your_key_here' || key.trim() === '') return null
-  return key.trim()
+/**
+ * 提取请求头里访客自带的 Key。
+ * 缺失返回 null（缺 Key）；有值但格式无效则抛 LlmConfigError('user')，
+ * 让调用方明确告知访客「Key 填错了」，而不是静默当作没填。
+ */
+export function requireUserKey(headers: Record<string, string | undefined>): string {
+  const raw = headers[USER_KEY_HEADER] ?? headers[USER_KEY_HEADER.toLowerCase()]
+  if (typeof raw !== 'string' || raw.trim() === '') {
+    throw new LlmConfigError('missing')
+  }
+  const key = raw.trim()
+  if (!KEY_PATTERN.test(key)) {
+    throw new LlmConfigError('invalid')
+  }
+  return key
 }
 
-/** 提取请求头里访客自带的 Key（格式不对/缺失返回 null，调用方回退环境变量） */
-export function extractUserKey(headers: Record<string, string | undefined>): string | null {
-  const raw = headers[USER_KEY_HEADER] ?? headers[USER_KEY_HEADER.toLowerCase()]
-  if (typeof raw !== 'string') return null
-  const key = raw.trim()
-  return key !== '' && KEY_PATTERN.test(key) ? key : null
-}
+export type LlmKeyIssue = 'missing' | 'invalid'
 
 export class LlmConfigError extends Error {
-  /** 缺 Key 的原因：'server' 部署者没配环境变量；'user' 访客填的 Key 格式无效 */
-  source: 'server' | 'user'
-  constructor(source: 'server' | 'user' = 'server') {
-    super(source === 'user' ? '访客提供的 API Key 格式无效' : 'LLM 未配置：缺少 DEEPSEEK_API_KEY 环境变量')
+  /** 访客 Key 的问题：'missing' 没填；'invalid' 格式不对 */
+  source: LlmKeyIssue
+  constructor(source: LlmKeyIssue = 'missing') {
+    super(source === 'invalid' ? '访客提供的 API Key 格式无效' : '访客未提供 API Key')
     this.name = 'LlmConfigError'
     this.source = source
   }
@@ -60,15 +65,11 @@ interface ChatOptions {
   maxTokens?: number
   /** 强制 JSON 输出（DeepSeek 支持 response_format: json_object） */
   jsonMode?: boolean
-  /** 访客自带的 Key（BYOK）。提供时优先于服务端环境变量使用。 */
-  userKey?: string | null
 }
 
 /** 调用 DeepSeek chat/completions，返回助手回复文本。失败抛 LlmCallError。 */
-export async function chat(opts: ChatOptions): Promise<string> {
-  const serverKey = getApiKey()
-  const apiKey = opts.userKey ?? serverKey
-  if (!apiKey) throw new LlmConfigError()
+export async function chat(opts: ChatOptions & { userKey: string }): Promise<string> {
+  const apiKey = opts.userKey
 
   const baseUrl = (process.env.DEEPSEEK_BASE_URL ?? DEFAULT_BASE_URL).replace(/\/+$/, '')
   const model = process.env.DEEPSEEK_MODEL ?? DEFAULT_MODEL

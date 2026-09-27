@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { ApiClientError, requestSimulatePrepare } from '../lib/api-client'
 import { recordModeVisit } from '../lib/settings'
+import KeyGateBanner from '../components/KeyGateBanner'
 import {
   defaultTitle,
   deleteSavedMaterial,
@@ -48,6 +49,7 @@ export default function SimulateSetupPage() {
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [keyNeeded, setKeyNeeded] = useState(false)
   const [retryHint, setRetryHint] = useState(false)
 
   useEffect(() => {
@@ -94,6 +96,7 @@ export default function SimulateSetupPage() {
     }
     setLoading(true)
     setError(null)
+    setKeyNeeded(false)
     const briefText = brief.trim().slice(0, MAX_BRIEF)
     try {
       const prepared = await requestSimulatePrepare({
@@ -130,7 +133,9 @@ export default function SimulateSetupPage() {
       })
       navigate('/simulate/play')
     } catch (err) {
-      setError(err instanceof ApiClientError ? err.message : '拆题失败，请稍后重试')
+      setKeyNeeded(err instanceof ApiClientError && err.keyRequired)
+      setError(err instanceof ApiClientError && !err.keyRequired ? err.message : null)
+      if (!(err instanceof ApiClientError)) setError('拆题失败，请稍后重试')
     } finally {
       setLoading(false)
     }
@@ -238,6 +243,8 @@ export default function SimulateSetupPage() {
           <span className="muted">{material.trim().length} 字</span>
         </div>
       </div>
+
+      {keyNeeded && <KeyGateBanner />}
 
       {error && (
         <div className="notice notice-error" role="alert">

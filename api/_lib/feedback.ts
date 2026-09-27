@@ -7,7 +7,7 @@
  *
  * 无状态：请求处理完即丢弃，不落库。填充词/模糊表达不在此接口处理（前端词库匹配）。
  */
-import { chat, parseJsonReply, extractUserKey, LlmConfigError, LlmCallError } from './llm.js'
+import { chat, parseJsonReply, requireUserKey, LlmConfigError, LlmCallError, type LlmKeyIssue } from './llm.js'
 import { ALL_SEMANTIC_TAGS } from '../../src/data/semantic-tags.js'
 import { checkRateLimit } from './rate-limit.js'
 import {
@@ -172,6 +172,17 @@ function sanitizeText(v: unknown, fallback: string): string {
   return isNonEmptyString(v) ? v.trim() : fallback
 }
 
+/** 503 统一响应：按访客 Key 的问题分流文案，前端据 keyRequired 弹引导 */
+function keyRequiredPayload(issue: LlmKeyIssue): { error: string; keyRequired: true } {
+  return {
+    error:
+      issue === 'invalid'
+        ? '你填写的 API Key 格式不对：应以 sk- 开头，后面跟一串字母数字。请点右上角「Key」检查后重试'
+        : '还没有填写 DeepSeek API Key。点右上角「Key」填入你自己的 Key 后重试（只存本机，本站不会保存）',
+    keyRequired: true,
+  }
+}
+
 export async function handleFeedback(
   req: ApiRequest,
   res: ApiResponseWriter,
@@ -181,6 +192,18 @@ export async function handleFeedback(
   if (!checkRateLimit(req.headers)) {
     res.json(429, { error: '请求太频繁了，请稍等一分钟再试' })
     return true
+  }
+
+  // 纯 BYOK：先验访客 Key，没填/格式不对直接拦下，不进业务逻辑
+  let userKey: string
+  try {
+    userKey = requireUserKey(req.headers)
+  } catch (err) {
+    if (err instanceof LlmConfigError) {
+      res.json(503, keyRequiredPayload(err.source))
+      return true
+    }
+    throw err
   }
 
   let body: FeedbackRequestBody
@@ -243,7 +266,7 @@ export async function handleFeedback(
 
   try {
     const raw = await chat({
-      userKey: extractUserKey(req.headers),
+      userKey,
       messages: [
         { role: 'system', content: prompt.system },
         { role: 'user', content: prompt.user },
@@ -284,12 +307,7 @@ export async function handleFeedback(
     res.json(200, result)
   } catch (err) {
     if (err instanceof LlmConfigError) {
-      res.json(
-        503,
-        err.source === 'user'
-          ? { error: '你填写的 API Key 格式不对，请在右上角「Key」里检查后重试', keyRequired: true }
-          : { error: '服务端尚未配置大模型 Key。请在右上角「Key」里填入你自己的 DeepSeek Key，或联系部署者配置', keyRequired: true },
-      )
+      res.json(503, keyRequiredPayload(err.source))
       return true
     }
     if (err instanceof LlmCallError) {

@@ -7,7 +7,7 @@
  * 材料由 AI 现场生成而非抓取真实文章：①长度难度可控；②规避版权问题。
  * 材料文本不落库，随响应返回后由前端存入用户本地浏览器。
  */
-import { chat, parseJsonReply, extractUserKey, LlmConfigError, LlmCallError } from './llm.js'
+import { chat, parseJsonReply, requireUserKey, LlmConfigError, LlmCallError, type LlmKeyIssue } from './llm.js'
 import { checkRateLimit } from './rate-limit.js'
 import { LIMITS, type ApiRequest, type ApiResponseWriter } from './types.js'
 
@@ -22,6 +22,17 @@ function isNonEmptyString(v: unknown): v is string {
   return typeof v === 'string' && v.trim() !== ''
 }
 
+/** 503 统一响应：按访客 Key 的问题分流文案 */
+function keyRequiredPayload(issue: LlmKeyIssue): { error: string; keyRequired: true } {
+  return {
+    error:
+      issue === 'invalid'
+        ? '你填写的 API Key 格式不对：应以 sk- 开头，后面跟一串字母数字。请点右上角「Key」检查后重试'
+        : '还没有填写 DeepSeek API Key。点右上角「Key」填入你自己的 Key 后重试（只存本机，本站不会保存）',
+    keyRequired: true,
+  }
+}
+
 export async function handleGenerateMaterial(
   req: ApiRequest,
   res: ApiResponseWriter,
@@ -31,6 +42,18 @@ export async function handleGenerateMaterial(
   if (!checkRateLimit(req.headers)) {
     res.json(429, { error: '请求太频繁了，请稍等一分钟再试' })
     return true
+  }
+
+  // 纯 BYOK：先验访客 Key
+  let userKey: string
+  try {
+    userKey = requireUserKey(req.headers)
+  } catch (err) {
+    if (err instanceof LlmConfigError) {
+      res.json(503, keyRequiredPayload(err.source))
+      return true
+    }
+    throw err
   }
 
   let body: MaterialRequestBody
@@ -49,7 +72,7 @@ export async function handleGenerateMaterial(
 
   try {
     const raw = await chat({
-      userKey: extractUserKey(req.headers),
+      userKey,
       messages: [
         {
           role: 'system',
@@ -83,12 +106,7 @@ export async function handleGenerateMaterial(
     res.json(200, { material })
   } catch (err) {
     if (err instanceof LlmConfigError) {
-      res.json(
-        503,
-        err.source === 'user'
-          ? { error: '你填写的 API Key 格式不对，请在右上角「Key」里检查后重试', keyRequired: true }
-          : { error: '服务端尚未配置大模型 Key。请在右上角「Key」里填入你自己的 DeepSeek Key，或联系部署者配置', keyRequired: true },
-      )
+      res.json(503, keyRequiredPayload(err.source))
       return true
     }
     if (err instanceof LlmCallError) {
