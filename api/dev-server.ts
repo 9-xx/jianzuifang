@@ -134,6 +134,11 @@ const server = http.createServer(async (req, res) => {
   }
 })
 
-server.listen(PORT, () => {
-  console.log(`[dev-server] API listening on http://localhost:${PORT}`)
-})
+// Vercel 会把 api/ 下每个 .ts 都当作 Serverless Function 打包，
+// 此文件仅供本地 `npm run dev` 使用，部署环境不启动监听。
+if (!process.env.VERCEL) {
+  server.listen(PORT, () => {
+    console.log(`[dev-server] API listening on http://localhost:${PORT}`)
+  })
+}
+export default server
